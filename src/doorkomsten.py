@@ -15,12 +15,10 @@ API https://delijn.docs.apiary.io/
 (useless api ;) ) https://data.delijn.be
 todo: storing op lijn melden
 todo: add colors/more layout fancyness
-todo: leave on github
 """
 import time
 import os
 import sys
-from typing import Union
 from signal import signal, SIGINT
 import requests
 
@@ -34,26 +32,26 @@ ICON = {
 }
 
 
-def sigint_handler(sig, frame) -> None:
+def sigint_handler(sig, frame):
     """Handler for SIGINT signal"""
     print("\nctrl-c. Bye!")
     sys.exit(0)
 
 
-def api_get_doorkomsten(halte: Union[str, int]) -> dict:
+def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
     entiteit = halte[:1] if isinstance(halte, str) else str(halte)[:1]
     result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
     return result.json()
 
 
-def api_search_halte(query: str) -> dict:
+def api_search_halte(query):
     """Api call. Search for halte by name"""
     result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
     return result.json()
 
 
-def print_doorkomsten(lijnen: dict) -> None:
+def print_doorkomsten(lijnen):
     """print parsed data in terminal"""
     print("{0} - haltenr: {1}\n".format(lijnen['omschrijvingLang'], lijnen['halteNummer']))
     for item in lijnen['lijnen']:
@@ -66,7 +64,7 @@ def print_doorkomsten(lijnen: dict) -> None:
                                                         item['bestemming'], realtime, vertrektijd))
 
 
-def print_halte_search_results(table: dict) -> None:
+def print_halte_search_results(table):
     """print parsed data in terminal from 'api_search_halte' function"""
     haltes = table['haltes']
     result = 0
@@ -78,7 +76,7 @@ def print_halte_search_results(table: dict) -> None:
             'omschrijvingLang'], halte['halteNummer'], lijn_nummers, bestemmingen))
 
 
-def doorkomsten(halte_nummer: str) -> None:
+def doorkomsten(halte_nummer):
     """Loop for the doorkomsten table"""
     line_filter = None
     while True:
@@ -106,20 +104,20 @@ def doorkomsten(halte_nummer: str) -> None:
                 line_filter = user_input
 
 
-def filtered_doorkomsten(line_filter: str, lijnen: dict) -> dict:
+def filtered_doorkomsten(line_filter, lijnen):
     """filter by a line-nr"""
     lijnen['lijnen'] = [item for item in lijnen['lijnen']
                         if item['lijnNummerPubliek'] == line_filter]
     return lijnen
 
 
-def save_query(query_input: str) -> None:
+def save_query(query_input):
     """Put search query in a text file"""
     with open(QUERY_LOG, "w") as file:
         file.write(query_input)
 
 
-def get_last_query() -> str:
+def get_last_query():
     """Read last search entry from text file"""
     line = ""
     try:
