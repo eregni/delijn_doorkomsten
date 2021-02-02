@@ -1,0 +1,8 @@
+yellow
+ffdd00
+
+dark
+394146
+
+gray
+edeff0

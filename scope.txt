@@ -1,0 +1,17 @@
+The user gets one input field:
+    - type in a stop nr and get the (realtime) info
+    - type a name and get a list with search results. each result is a link to the realtime info of that stop
+
+TUI - tabelview
+	voertuigtype - lijnnr - bestemming - realtime eta - vertrektijd
+
+solution:
+use termux on android + the termux-widgets addon. Put a bash script in the termux $HOME/.shortcuts folder who points to
+the appropiate (python) script
+
+
+IDEA:
+ - GUI on android
+ - search for a specific time
+ - sort data?
+ - storingen?
