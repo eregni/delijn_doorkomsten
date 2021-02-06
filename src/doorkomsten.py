@@ -15,6 +15,8 @@ API https://delijn.docs.apiary.io/
 (useless api ;) ) https://data.delijn.be
 todo: storing op lijn melden
 todo: add colors/more layout fancyness
+todo: selecting halte from a search by name is not working anymore
+todo: save x amount of search results
 """
 import time
 import os
