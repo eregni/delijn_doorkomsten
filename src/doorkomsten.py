@@ -15,7 +15,6 @@ API https://delijn.docs.apiary.io/
 (useless api ;) ) https://data.delijn.be
 todo: storing op lijn melden
 todo: add colors/more layout fancyness
-todo: selecting halte from a search by name is not working anymore
 todo: save x amount of search results
 """
 import time
@@ -42,7 +41,7 @@ def sigint_handler(sig, frame):
 
 def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
-    entiteit = halte[:1] if isinstance(halte, str) else str(halte)[:1]
+    entiteit = str(halte)[:1]
     result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
     return result.json()
 
@@ -116,7 +115,7 @@ def filtered_doorkomsten(line_filter, lijnen):
 def save_query(query_input):
     """Put search query in a text file"""
     with open(QUERY_LOG, "w") as file:
-        file.write(query_input)
+        file.write(str(query_input))
 
 
 def get_last_query():
@@ -141,19 +140,18 @@ def main():
     print("######################################")
     print("\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C")
     print("######################################\n")
-    if last_query:
-        print("Druk enter om terug halte nr '{0}' op te zoeken".format(last_query))
-    else:
-        print("\n")
 
     while True:
+        if last_query:
+            print("Druk enter om terug halte nr '{0}' op te zoeken".format(last_query))
+
         query_input = input("Halte (nr of naam), 0 = afsluiten: ") or last_query
         if query_input == '0':
             break
 
-        last_query = query_input
         try:
             if query_input.isdigit():
+                last_query = query_input
                 doorkomsten(query_input)
             else:
                 data = api_search_halte(query_input)
@@ -164,7 +162,9 @@ def main():
                     user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
                     if user_input != '0':
                         user_input = int(user_input) - 1
-                        doorkomsten(data['haltes'][user_input]['halteNummer'])
+                        haltenr = data['haltes'][user_input]['halteNummer']
+                        last_query = haltenr
+                        doorkomsten(haltenr)
         except requests.exceptions.RequestException:
             print("Http error! Is there an internet connection?")
             break
