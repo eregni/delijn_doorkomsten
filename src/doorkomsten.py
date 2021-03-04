@@ -14,8 +14,6 @@ usefull sources:
 API https://delijn.docs.apiary.io/
 (useless api ;) ) https://data.delijn.be
 todo: storing op lijn melden
-todo: add colors/more layout fancyness
-todo: save x amount of search results
 """
 import time
 import sys
@@ -83,22 +81,23 @@ def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
     entiteit = str(halte)[:1]
     result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
-    try:
-        res = result.json()
-        save_query(halte)
-        return res
-    except ValueError:  # should catch json decode exceptions
-        return None
+    data = request_to_json(result)
+    save_query(halte)
+    return  data
 
 
 def api_search_halte(query):
     """Api call. Search for halte by name"""
     result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
+    data = request_to_json(result)
     save_query(query)
+    return data
+
+
+def request_to_json(data):
+    """Catch json decode exceptions"""
     try:
-        res = result.json()
-        save_query(query)
-        return  res
+        return data.json()
     except ValueError:  # should catch json decode exceptions
         return None
 
