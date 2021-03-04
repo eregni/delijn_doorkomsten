@@ -18,7 +18,6 @@ todo: add colors/more layout fancyness
 todo: save x amount of search results
 """
 import time
-import os
 import sys
 from signal import signal, SIGINT
 import requests
@@ -84,13 +83,24 @@ def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
     entiteit = str(halte)[:1]
     result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
-    return result.json()
+    try:
+        res = result.json()
+        save_query(halte)
+        return res
+    except ValueError:  # should catch json decode exceptions
+        return None
 
 
 def api_search_halte(query):
     """Api call. Search for halte by name"""
     result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
-    return result.json()
+    save_query(query)
+    try:
+        res = result.json()
+        save_query(query)
+        return  res
+    except ValueError:  # should catch json decode exceptions
+        return None
 
 
 def print_doorkomsten(lijnen):
@@ -126,7 +136,7 @@ def print_halte_search_results(table, query):
         result += 1
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
-        print("{5}{0}) {1:<35} - haltenr: {2} - Lijnen: {3} \t Richting: {4}".format(result, halte[
+        print("{5}{0}) {1} - haltenr: {2} - Lijnen: {3} Richting: {4}".format(result, halte[
             'omschrijvingLang'], halte['halteNummer'], lijn_nummers, bestemmingen, text_color))
 
         if text_color == colors.fg.lightgreen:
@@ -155,7 +165,6 @@ def doorkomsten(halte_nummer):
 
         user_input = input("Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, "
                            "f = filter op lijnnr: ")
-        os.system('clear')
         if user_input == '0':
             break
         elif user_input == 'f':
@@ -218,12 +227,13 @@ def main():
                 if not data['haltes']:
                     print("\nNiets gevonden.probeer een andere zoekterm")
                 else:
+                    last_query = query_input
                     print_halte_search_results(data, query_input)
                     user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
                     if user_input != '0':
                         user_input = int(user_input) - 1
                         haltenr = data['haltes'][user_input]['halteNummer']
-                        last_query = haltenr
+                        last_query = str(haltenr)
                         doorkomsten(haltenr)
         except requests.exceptions.RequestException:
             print("Http error! Is there an internet connection?")
