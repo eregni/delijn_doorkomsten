@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
 Program to show realtime info from De lijn. I wrote this thing because the official
-(android) app works awefully slow on my phone. A solution is to make a terminal program with less
-possibilities:
+(android) app works awefully slow on my phone. A solution is to make a terminal program with
+(a lot) less feautures:
 
-*   search realtime for a specific bus/tram stop by it's haltenr. When there's no result search for
+*   search realtime info for a specific bus stop. When there's no result search for
     a stop by name
+
+*   Filter search results by line nr
 
 I've used dutch words in the code and comments because I kept the same variable names as found in
 the api from De Lijn
 
 usefull sources:
 API https://delijn.docs.apiary.io/
-(useless api ;) ) https://data.delijn.be
+todo: use new api -> https://data.delijn.be
 todo: storing op lijn melden
 """
 import time
@@ -30,6 +32,7 @@ ICON = {
 }
 
 
+# https://www.geeksforgeeks.org/print-colors-python-terminal/
 class colors:
     """Colors class:reset all colors with colors.reset; two
     sub classes fg for foreground
@@ -112,7 +115,7 @@ def print_doorkomsten(lijnen):
         vertrektijd = time.strftime("%H:%M",
                                     time.localtime(item['vertrekTheoretischeTijdstip'] / 1000))
 
-        print("{6}{0} {1:<5}{2:<4}{3:<20}{4:<7}{5}".format(ICON.get(item['lijnType'], ""),
+        print("{6}{0} {1:<5}{2:<4}{3:<25}{4:<7}{5}".format(ICON.get(item['lijnType'], ""),
                                                         item['lijnType'], item['lijnNummerPubliek'],
                                                         item['bestemming'], realtime, vertrektijd,
                                                            text_color))

@@ -11,7 +11,7 @@ the appropiate (python) script
 
 
 IDEA:
- - GUI on android
+ - GUI on android (beeware,
  - search for a specific time
  - sort data?
  - storingen?
