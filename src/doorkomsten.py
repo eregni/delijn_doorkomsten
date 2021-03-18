@@ -14,11 +14,8 @@ usefull sources:
 API https://delijn.docs.apiary.io/
 (useless api ;) ) https://data.delijn.be
 todo: storing op lijn melden
-todo: add colors/more layout fancyness
-todo: save x amount of search results
 """
 import time
-import os
 import sys
 from signal import signal, SIGINT
 import requests
@@ -33,6 +30,47 @@ ICON = {
 }
 
 
+class colors:
+    """Colors class:reset all colors with colors.reset; two
+    sub classes fg for foreground
+    and bg for background; use as colors.subclass.colorname.
+    i.e. colors.fg.red or colors.bg.greenalso, the generic bold, disable,
+    underline, reverse, strike through,
+    and invisible work with the main class i.e. colors.bold"""
+    reset='\033[0m'
+    bold='\033[01m'
+    disable='\033[02m'
+    underline='\033[04m'
+    reverse='\033[07m'
+    strikethrough='\033[09m'
+    invisible='\033[08m'
+    class fg:
+        black='\033[30m'
+        red='\033[31m'
+        green='\033[32m'
+        orange='\033[33m'
+        blue='\033[34m'
+        purple='\033[35m'
+        cyan='\033[36m'
+        lightgrey='\033[37m'
+        darkgrey='\033[90m'
+        lightred='\033[91m'
+        lightgreen='\033[92m'
+        yellow='\033[93m'
+        lightblue='\033[94m'
+        pink='\033[95m'
+        lightcyan='\033[96m'
+    class bg:
+        black='\033[40m'
+        red='\033[41m'
+        green='\033[42m'
+        orange='\033[43m'
+        blue='\033[44m'
+        purple='\033[45m'
+        cyan='\033[46m'
+        lightgrey='\033[47m'
+
+
 def sigint_handler(sig, frame):
     """Handler for SIGINT signal"""
     print("\nctrl-c. Bye!")
@@ -43,38 +81,69 @@ def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
     entiteit = str(halte)[:1]
     result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
-    return result.json()
+    data = request_to_json(result)
+    save_query(halte)
+    return  data
 
 
 def api_search_halte(query):
     """Api call. Search for halte by name"""
     result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
-    return result.json()
+    data = request_to_json(result)
+    save_query(query)
+    return data
+
+
+def request_to_json(data):
+    """Catch json decode exceptions"""
+    try:
+        return data.json()
+    except ValueError:  # should catch json decode exceptions
+        return None
 
 
 def print_doorkomsten(lijnen):
     """print parsed data in terminal"""
-    print("{0} - haltenr: {1}\n".format(lijnen['omschrijvingLang'], lijnen['halteNummer']))
+    text_color = colors.fg.lightblue
+    print("\n{2}{0} - haltenr: {1}".format(lijnen['omschrijvingLang'], lijnen['halteNummer'], text_color))
+    text_color = colors.fg.lightgreen
     for item in lijnen['lijnen']:
         realtime = item['vertrekTijd'] if item['predictionStatussen'][0] == "REALTIME" else "GN RT"
         vertrektijd = time.strftime("%H:%M",
                                     time.localtime(item['vertrekTheoretischeTijdstip'] / 1000))
 
-        print("{0} {1:<5}{2:<4}{3:<20}{4:<7}{5}".format(ICON.get(item['lijnType'], ""),
+        print("{6}{0} {1:<5}{2:<4}{3:<20}{4:<7}{5}".format(ICON.get(item['lijnType'], ""),
                                                         item['lijnType'], item['lijnNummerPubliek'],
-                                                        item['bestemming'], realtime, vertrektijd))
+                                                        item['bestemming'], realtime, vertrektijd,
+                                                           text_color))
+        if text_color == colors.fg.lightgreen:
+            text_color = colors.fg.yellow
+        else:
+            text_color = colors.fg.lightgreen
+
+    print(colors.reset)
 
 
-def print_halte_search_results(table):
+def print_halte_search_results(table, query):
     """print parsed data in terminal from 'api_search_halte' function"""
+    text_color = colors.fg.lightblue
+    print("\n{0}\"{1}\"".format(text_color, query))
+    text_color = colors.fg.lightgreen
     haltes = table['haltes']
     result = 0
     for halte in haltes:
         result += 1
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
-        print("{0}) {1:<35} - haltenr: {2} - Lijnen: {3} \t Richting: {4}".format(result, halte[
-            'omschrijvingLang'], halte['halteNummer'], lijn_nummers, bestemmingen))
+        print("{5}{0}) {1} - haltenr: {2} - Lijnen: {3} Richting: {4}".format(result, halte[
+            'omschrijvingLang'], halte['halteNummer'], lijn_nummers, bestemmingen, text_color))
+
+        if text_color == colors.fg.lightgreen:
+            text_color = colors.fg.yellow
+        else:
+            text_color = colors.fg.lightgreen
+
+    print(colors.reset)
 
 
 def doorkomsten(halte_nummer):
@@ -93,9 +162,8 @@ def doorkomsten(halte_nummer):
             print("Geen doorkomsten gevonden rond huidig tijdstip :-(")
             break
 
-        user_input = input("\nWillekeurige knop = vernieuwen. 0 = opnieuw beginnen, "
+        user_input = input("Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, "
                            "f = filter op lijnnr: ")
-        os.system('clear')
         if user_input == '0':
             break
         elif user_input == 'f':
@@ -158,12 +226,13 @@ def main():
                 if not data['haltes']:
                     print("\nNiets gevonden.probeer een andere zoekterm")
                 else:
-                    print_halte_search_results(data)
+                    last_query = query_input
+                    print_halte_search_results(data, query_input)
                     user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
                     if user_input != '0':
                         user_input = int(user_input) - 1
                         haltenr = data['haltes'][user_input]['halteNummer']
-                        last_query = haltenr
+                        last_query = str(haltenr)
                         doorkomsten(haltenr)
         except requests.exceptions.RequestException:
             print("Http error! Is there an internet connection?")
