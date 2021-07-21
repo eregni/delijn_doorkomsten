@@ -17,6 +17,7 @@ API https://delijn.docs.apiary.io/
 todo: use new api -> https://data.delijn.be
 todo: storing op lijn melden?
 todo: unhandled exception at the stage where you have to choose a nr to select a search result
+todo: add favorite stops at start of the script
 """
 import time
 import sys
