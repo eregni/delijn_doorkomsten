@@ -20,10 +20,3 @@ On android:
 use termux on android + the termux-widgets addon. Put a bash script in the termux $HOME/.shortcuts folder who runs
 python script  
 https://termux.com/
-
-
-### Idea:
- - GUI on android (beeware, kivy)
- - search for a specific time
- - sort data?
- - storingen?
