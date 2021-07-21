@@ -15,7 +15,8 @@ the api from De Lijn
 usefull sources:
 API https://delijn.docs.apiary.io/
 todo: use new api -> https://data.delijn.be
-todo: storing op lijn melden
+todo: storing op lijn melden?
+todo: unhandled exception at the stage where you have to choose a nr to select a search result
 """
 import time
 import sys
