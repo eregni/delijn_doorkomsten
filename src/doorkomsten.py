@@ -94,9 +94,12 @@ def sigint_handler(sig, frame):
 def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
     entiteit = str(halte)[:1]
-    result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
-    data = request_to_json(result)
-    return data
+    try:
+        result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
+        data = request_to_json(result)
+        return data
+    except requests.ConnectionError:
+        print("Http error! Is there an internet connection?")
 
 
 def api_search_halte(query):
@@ -105,7 +108,7 @@ def api_search_halte(query):
         result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
         data = request_to_json(result)
         return data
-    except requests.exceptions.RequestException:
+    except requests.ConnectionError:
         print("Http error! Is there an internet connection?")
 
 
