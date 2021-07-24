@@ -28,7 +28,8 @@ FAVORITES = [
     ("edenplein -> stad", 102831),
     ("groenplaats bus", 102675),
     ("borkelstraat -> stad", 105449),
-    ("amerlolaan -> stad", 101587)
+    ("amerlolaan -> stad", 101587),
+    ("weegbreelaan -> stad", 109115)
 ]
 QUERY_LOG = "search.txt"
 API_CORE = 'https://www.delijn.be/rise-api-core/haltes/vertrekken'
