@@ -29,7 +29,10 @@ FAVORITES = [
     ("groenplaats bus", 102675),
     ("borkelstraat -> stad", 105449),
     ("amerlolaan -> stad", 101587),
-    ("weegbreelaan -> stad", 109115)
+    ("weegbreelaan -> stad", 109115),
+    ("metro diamant -> groenplaats", 103377),
+    ("metro astrid -> groenplaats", 103364),
+    ("centraal station -> melkmarkt", 102460)
 ]
 QUERY_LOG = "search.txt"
 API_CORE = 'https://www.delijn.be/rise-api-core/haltes/vertrekken'
@@ -243,9 +246,9 @@ def query_favorites():
     user_input = input(f"{Colors.reset}Kies nr: ")
     if user_input.isdigit():
         try:
-            _, halte = FAVORITES[int(user_input) - 1]
+            halte_name, halte = FAVORITES[int(user_input) - 1]
             doorkomsten(halte)
-            return str(halte)
+            return halte_name
         except IndexError:
             print("Ongeldige keuze")
             return None
@@ -268,7 +271,7 @@ def main():
 
     while True:
         if last_query:
-            print("Druk enter om terug halte nr '{0}' op te zoeken".format(last_query))
+            print("Druk enter om '{0}' op te zoeken".format(last_query))
 
         user_input = input("Halte (nr of naam), f = favorieten, 0 = afsluiten: ") or last_query
         if user_input == '0':
