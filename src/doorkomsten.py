@@ -16,6 +16,7 @@ usefull sources:
 API https://delijn.docs.apiary.io/
 todo: use new api -> https://data.delijn.be
 todo: storing op lijn melden?
+todo: bug filer by line
 """
 import time
 import sys
@@ -246,9 +247,9 @@ def query_favorites():
     user_input = input(f"{Colors.reset}Kies nr: ")
     if user_input.isdigit():
         try:
-            halte_name, halte = FAVORITES[int(user_input) - 1]
+            _, halte = FAVORITES[int(user_input) - 1]
             doorkomsten(halte)
-            return halte_name
+            return str(halte)
         except IndexError:
             print("Ongeldige keuze")
             return None
