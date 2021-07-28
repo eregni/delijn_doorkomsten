@@ -16,7 +16,8 @@ usefull sources:
 API https://delijn.docs.apiary.io/
 todo: use new api -> https://data.delijn.be
 todo: storing op lijn melden?
-todo: bug filer by line
+todo: bug filter by line
+todo: vertraging in tabel zetten
 """
 import time
 import sys
