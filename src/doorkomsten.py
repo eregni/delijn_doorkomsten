@@ -14,15 +14,17 @@ the api from De Lijn
 
 usefull sources:
 API https://delijn.docs.apiary.io/
-todo: use new api -> https://data.delijn.be
-todo: storing op lijn melden?
-todo: bug filter by line
-todo: vertraging in tabel zetten
+
+I used the old api because the new one (https://data.delijn.be/) needs much more api calls and code.
+todo: use new api?
+todo: omleiding/storing melden?
+todo: documentation
 """
-import time
 import sys
 from signal import signal, SIGINT
 import requests
+from datetime import datetime, timedelta
+
 #  List with favorite stops
 FAVORITES = [
     ("sint-katelijne", 102700),
@@ -38,7 +40,7 @@ FAVORITES = [
     ("centraal station -> melkmarkt", 102460)
 ]
 QUERY_LOG = "search.txt"
-API_CORE = 'https://www.delijn.be/rise-api-core/haltes/vertrekken'
+API_HALTE_VERTREKKEN = 'https://www.delijn.be/rise-api-core/haltes/vertrekken'
 API_SEARCH = 'https://www.delijn.be/rise-api-search'
 ICON = {
     'bus': '\U0001F68C',
@@ -99,9 +101,8 @@ def sigint_handler(sig, frame):
 
 def api_get_doorkomsten(halte):
     """Api call. Get realtime info from halte"""
-    entiteit = str(halte)[:1]
     try:
-        result = requests.get("{0}/{1}/{2}/real-time".format(API_CORE, entiteit, halte))
+        result = requests.get(f"{API_HALTE_VERTREKKEN}/{halte}")
         data = request_to_json(result)
         return data
     except requests.ConnectionError:
@@ -111,7 +112,7 @@ def api_get_doorkomsten(halte):
 def api_search_halte(query):
     """Api call. Search for halte by name"""
     try:
-        result = requests.get("{0}/search/haltes/{1}/1".format(API_SEARCH, query))
+        result = requests.get(f"{API_SEARCH}/search/haltes/{query}/1")
         data = request_to_json(result)
         return data
     except requests.ConnectionError:
@@ -129,21 +130,33 @@ def request_to_json(data):
 def print_doorkomsten(lijnen):
     """print parsed data in terminal"""
     text_color = Colors.Fg.lightblue
-    print("\n{2}{0} - haltenr: {1}".format(lijnen['omschrijvingLang'], lijnen['halteNummer'], text_color))
+    print(f"\n{text_color}{lijnen['omschrijvingLang']} - haltenr: {lijnen['halteNummer']}")
     text_color = Colors.Fg.lightgreen
     for item in lijnen['lijnen']:
         realtime = item['vertrekTijd'] if item['predictionStatussen'][0] == "REALTIME" else "GN RT"
-        vertrektijd = time.strftime("%H:%M",
-                                    time.localtime(item['vertrekTheoretischeTijdstip'] / 1000))
+        vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
+        try:
+            vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
+        except TypeError:  # 'vertrekRealtimeTijdstip' = None
+            vertrektijd_rt = vertrektijd
 
-        print("{6}{0} {1:<5}{2:<4}{3:<25}{4:<7}{5}".format(ICON.get(item['lijnType'], ""),
-                                                        item['lijnType'], item['lijnNummerPubliek'],
-                                                        item['bestemming'], realtime, vertrektijd,
-                                                           text_color))
-        if text_color == Colors.Fg.lightgreen:
-            text_color = Colors.Fg.yellow
+        if vertrektijd_rt > vertrektijd:
+            delay = vertrektijd_rt - vertrektijd
         else:
-            text_color = Colors.Fg.lightgreen
+            delay = vertrektijd - vertrektijd_rt
+            delay += timedelta(minutes=1)  # add extra minute when delay is negative. This increases the chance to catch your bus
+
+        if delay.seconds < 60:
+            delay_text = ""
+        else:
+            delta = "+" if vertrektijd_rt > vertrektijd else "-"
+            slice_start = 0 if delay.seconds >= 3600 else 3
+            delay_text = f"{Colors.Fg.red}{delta}{str(delay)[slice_start:4]}{text_color}"
+
+        icon = ICON.get(item['lijnType'], "")
+        print(f"{text_color}{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
+              f"{realtime:<7}{vertrektijd.strftime('%H:%M'):<7}{delay_text}")
+        text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
 
     print(Colors.reset)
 
@@ -151,7 +164,7 @@ def print_doorkomsten(lijnen):
 def print_halte_search_results(table, query):
     """print parsed data in terminal from 'api_search_halte' function"""
     text_color = Colors.Fg.lightblue
-    print("\n{0}\"{1}\"".format(text_color, query))
+    print(f"\n{text_color}\"{query}\"")
     text_color = Colors.Fg.lightgreen
     haltes = table['haltes']
     result = 0
@@ -159,8 +172,8 @@ def print_halte_search_results(table, query):
         result += 1
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
-        print("{5}{0}) {1} - haltenr: {2} - Lijnen: {3} Richting: {4}".format(result, halte[
-            'omschrijvingLang'], halte['halteNummer'], lijn_nummers, bestemmingen, text_color))
+        print(f"{text_color}{result}) {halte['omschrijvingLang']} - haltenr: {halte['halteNummer']} - Lijnen: "
+              f"{lijn_nummers} Richting: {bestemmingen}")
 
         if text_color == Colors.Fg.lightgreen:
             text_color = Colors.Fg.yellow
@@ -190,9 +203,10 @@ def doorkomsten(halte_nummer):
         if user_input == '0':
             break
         elif user_input == 'f':
-            lines = {line['lijnNummerPubliek'] for line in lijnen['lijnen']}
-            user_input = input("Kies lijnnr ({0}): ".format(", ".join(lines)))
-            if user_input in lines:
+            line_nrs = {line['lijnNummerPubliek'] for line in lijnen['lijnen']}
+            lines = ", ".join(line_nrs)
+            user_input = input(f"Kies lijnnr ({lines}): ")
+            if user_input in line_nrs:
                 line_filter = user_input
 
 
@@ -274,7 +288,7 @@ def main():
 
     while True:
         if last_query:
-            print("Druk enter om '{0}' op te zoeken".format(last_query))
+            print(f"Druk enter om '{last_query}' op te zoeken")
 
         user_input = input("Halte (nr of naam), f = favorieten, 0 = afsluiten: ") or last_query
         if user_input == '0':
