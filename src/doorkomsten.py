@@ -144,7 +144,6 @@ def print_doorkomsten(lijnen):
             delay = vertrektijd_rt - vertrektijd
         else:
             delay = vertrektijd - vertrektijd_rt
-            delay += timedelta(minutes=1)  # add extra minute when delay is negative. This increases the chance to catch your bus
 
         if delay.seconds < 60:
             delay_text = ""
