@@ -253,7 +253,7 @@ def search_halte(query):
 
 
 def query_favorites():
-    print(Colors.Fg.lightblue)
+    print(Colors.Fg.lightcyan)
     index = 1
     for stop, nr in FAVORITES:
         print(f"{index}) {stop} ({nr})")
