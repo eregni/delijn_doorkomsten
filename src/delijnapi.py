@@ -1,4 +1,7 @@
-"""Collection of api calls"""
+"""
+Collection of api calls
+API https://delijn.docs.apiary.io/
+"""
 import requests
 
 API_CORE = 'https://www.delijn.be/rise-api-core'
@@ -16,9 +19,9 @@ def call_api(url: str) -> dict:
         pass  # silence json decode exceptions
 
 
-def api_get_doorkomsten(halte: int):
+def api_get_doorkomsten(halte: int, num_results: int = 10):
     """Get realtime info from halte"""
-    url = f"{API_CORE}/haltes/vertrekken/{halte}"
+    url = f"{API_CORE}/haltes/vertrekken/{halte}/{num_results}"
     return call_api(url)
 
 

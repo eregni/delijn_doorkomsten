@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
 Terminal program to show realtime info from De lijn. I wrote this thing because the official
-(android) app works awefully slow on my phone. A solution is to make a terminal program with
-(a lot) less feautures:
+(android) app works awfully slow on my phone. A solution is to make a terminal program with
+(a lot) fewer features:
 
 *   search realtime info for a specific bus stop. When there's no result search for
     a stop by name
 
 *   Filter search results by line nr
 
-I've used dutch words in the code and comments because I kept the same variable names as found in
+I've used Dutch words in the code and comments because I kept the same variable names as found in
 the api from De Lijn
 
 used sources:
@@ -55,28 +55,25 @@ def print_doorkomsten(lijnen: dict) -> None:
     print(f"\n{text_color}{lijnen['omschrijvingLang']} - haltenr: {lijnen['halteNummer']}")
     text_color = Colors.Fg.lightgreen
     for item in lijnen['lijnen']:
-        realtime = item['vertrekTijd'] if item['predictionStatussen'][0] == "REALTIME" else "GN RT"
+        realtime_text = item['vertrekTijd'] if item['predictionStatussen'][0] == "REALTIME" else "GN RT"
         vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
         try:
             vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
         except TypeError:  # 'vertrekRealtimeTijdstip' = None
             vertrektijd_rt = vertrektijd
 
+        delay_text = ""
         if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
             delay = vertrektijd_rt - vertrektijd
-        else:
+            delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}{text_color}\'"
+        elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
             delay = vertrektijd - vertrektijd_rt
-
-        if delay.seconds < 60:
-            delay_text = ""
-        else:
-            delta = "+" if vertrektijd_rt > vertrektijd else "-"
-            slice_start = 0 if delay.seconds >= 3600 else 3
-            delay_text = f"{Colors.Fg.red}{delta}{str(delay)[slice_start:4]}{text_color}"
+            # add an extra min to increase chances of catching your bus...
+            delay_text = f"{Colors.Fg.red}-{(delay.seconds // 60) + 1}\'{text_color}"
 
         icon = ICON.get(item['lijnType'], "")
         print(f"{text_color}{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
-              f"{realtime:<7}{vertrektijd.strftime('%H:%M'):<7}{delay_text}")
+              f"{realtime_text:<7}{vertrektijd.strftime('%H:%M'):<7}{delay_text}")
         text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
 
     print(Colors.reset)
@@ -102,9 +99,9 @@ def print_halte_search_results(table: dict, query: str) -> None:
 def print_favorites() -> None:
     """Print favorites list"""
     print(Colors.Fg.lightcyan)
-    stop_lenght = max([len(stop) for stop, _ in FAVORITES])
+    stop_length = max([len(stop) for stop, _ in FAVORITES])
     for index, (stop, nr) in enumerate(FAVORITES):
-        print(f"{index + 1}) {stop:<{stop_lenght}} ({nr})")
+        print(f"{index + 1}) {stop:<{stop_length}} ({nr})")
     print(Colors.reset)
 
 
@@ -115,13 +112,15 @@ def doorkomsten(halte_nummer: int):
         try:
             data = delijnapi.api_get_doorkomsten(halte_nummer)
             lijnen = data['halte'][0]
-            save_query(halte_nummer)
             if line_filter is not None:
                 filtered = filter_doorkomsten(line_filter, lijnen)
                 print_doorkomsten(filtered)
             else:
                 print_doorkomsten(lijnen)
-        except (IndexError, TypeError):
+
+            save_query(halte_nummer)
+
+        except (IndexError, TypeError) as e:
             print("Geen doorkomsten gevonden rond huidig tijdstip :-(")
             break
 
@@ -149,8 +148,8 @@ def search_halte(query: str) -> None:
     if not data['haltes']:
         print("\nNiets gevonden.probeer een andere zoekterm")
     else:
-        save_query(query)
         print_halte_search_results(data, query)
+        save_query(query)
         user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
         if user_input != '0' and user_input.isdigit():
             user_input = int(user_input) - 1
@@ -192,8 +191,8 @@ def main():
 
         elif user_input.isdigit():
             user_input = int(user_input)
-            if user_input - 1 in [stop_nr for _, stop_nr in FAVORITES]:
-                doorkomsten(FAVORITES[user_input - 1])
+            if user_input - 1 in range(len(FAVORITES)):
+                doorkomsten(FAVORITES[user_input - 1][1])
             else:
                 doorkomsten(user_input)
 
