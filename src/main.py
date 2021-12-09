@@ -65,7 +65,7 @@ def print_doorkomsten(lijnen: dict) -> None:
         delay_text = ""
         if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
             delay = vertrektijd_rt - vertrektijd
-            delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}{text_color}\'"
+            delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}\'{text_color}"
         elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
             delay = vertrektijd - vertrektijd_rt
             # add an extra min to increase chances of catching your bus...
