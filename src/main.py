@@ -88,7 +88,7 @@ def print_halte_search_results(table: dict, query: str) -> None:
     for index, halte in enumerate(haltes):
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
-        print(f"{text_color}{index}) {halte['omschrijvingLang']} - haltenr: {halte['halteNummer']} - Lijnen: "
+        print(f"{text_color}{index + 1}) {halte['omschrijvingLang']} - haltenr: {halte['halteNummer']} - Lijnen: "
               f"{lijn_nummers} Richting: {bestemmingen}")
 
         text_color = Colors.Fg.lightgreen if text_color == Colors.Fg.yellow else Colors.Fg.lightgreen
