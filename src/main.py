@@ -54,26 +54,36 @@ def print_doorkomsten(lijnen: dict) -> None:
     text_color = Colors.Fg.lightblue
     print(f"\n{text_color}{lijnen['omschrijvingLang']} - haltenr: {lijnen['halteNummer']}")
     text_color = Colors.Fg.lightgreen
-    for item in lijnen['lijnen']:
-        realtime_text = item['vertrekTijd'] if item['predictionStatussen'][0] == "REALTIME" else "GN RT"
-        vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
-        try:
-            vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
-        except TypeError:  # 'vertrekRealtimeTijdstip' = None
-            vertrektijd_rt = vertrektijd
 
+    for item in lijnen['lijnen']:
+        vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
+        vertrektijd_text = ""
         delay_text = ""
-        if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
-            delay = vertrektijd_rt - vertrektijd
-            delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}\'{text_color}"
-        elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
-            delay = vertrektijd - vertrektijd_rt
-            # add an extra min to increase chances of catching your bus...
-            delay_text = f"{Colors.Fg.red}-{(delay.seconds // 60) + 1}\'{text_color}"
+
+        if "CANCELLED" in item['predictionStatussen']:
+            realtime_text = "Rijdt niet"
+        elif "DELETED" in item['predictionStatussen']:
+            realtime_text = "Rijdt niet"
+        elif "REALTIME" in item['predictionStatussen']:
+            realtime_text = item['vertrekTijd']
+            try:
+                vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
+                vertrektijd_text = vertrektijd.strftime('%H:%M')
+                if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
+                    delay = vertrektijd_rt - vertrektijd
+                    delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}\'{text_color}"
+                elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
+                    delay = vertrektijd - vertrektijd_rt
+                    # add an extra min to increase chances of catching your bus...
+                    delay_text = f"{Colors.Fg.red}-{(delay.seconds // 60) + 1}\'{text_color}"
+            except TypeError:  # 'vertrekRealtimeTijdstip' = None (Sometimes, the api doesn't return the calculated ETA)
+                pass
+        else:
+            realtime_text = "GN RT"
 
         icon = ICON.get(item['lijnType'], "")
         print(f"{text_color}{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
-              f"{realtime_text:<7}{vertrektijd.strftime('%H:%M'):<7}{delay_text}")
+              f"{realtime_text:<7}{vertrektijd_text:<7}{delay_text}")
         text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
 
     print(Colors.reset)
