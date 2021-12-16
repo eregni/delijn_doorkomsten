@@ -101,7 +101,7 @@ def print_halte_search_results(table: dict, query: str) -> None:
         print(f"{text_color}{index + 1}) {halte['omschrijvingLang']} - haltenr: {halte['halteNummer']} - Lijnen: "
               f"{lijn_nummers} Richting: {bestemmingen}")
 
-        text_color = Colors.Fg.lightgreen if text_color == Colors.Fg.yellow else Colors.Fg.lightgreen
+        text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
 
     print(Colors.reset)
 
