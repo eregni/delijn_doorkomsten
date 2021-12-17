@@ -111,7 +111,8 @@ def print_favorites() -> None:
     print(Colors.Fg.lightcyan)
     stop_length = max([len(stop) for stop, _ in FAVORITES])
     for index, (stop, nr) in enumerate(FAVORITES):
-        print(f"{index + 1}) {stop:<{stop_length}} ({nr})")
+        index_text = f"{index + 1})"
+        print(f"{index_text:<4}{stop:<{stop_length}} ({nr})")
     print(Colors.reset)
 
 
