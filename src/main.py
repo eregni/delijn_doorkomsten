@@ -18,6 +18,7 @@ API https://delijn.docs.apiary.io/
 I used the old api because the new one (https://data.delijn.be/) needs much more api calls and code.
 """
 import sys
+import curses
 from signal import signal, SIGINT
 from datetime import datetime, timedelta
 
@@ -106,13 +107,18 @@ def print_halte_search_results(table: dict, query: str) -> None:
     print(Colors.reset)
 
 
-def print_favorites() -> None:
+def print_favorites(window) -> None:
     """Print favorites list"""
-    print(Colors.Fg.lightcyan)
+    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
     stop_length = max([len(stop) for stop, _ in FAVORITES])
+    window.clear()
+    window.resize(len(FAVORITES) + 1, window.getmaxyx()[1])
+    window.addstr(0, 1, "Favorieten:", curses.A_BOLD)
     for index, (stop, nr) in enumerate(FAVORITES):
-        print(f"{index + 1}) {stop:<{stop_length}} ({nr})")
-    print(Colors.reset)
+        index_text = str(index + 1) + ')'
+        window.addstr(index + 1, 2, f"{index_text:<4}{stop:<{stop_length}} ({nr})", curses.color_pair(1))
+
+    window.refresh()
 
 
 def doorkomsten(halte_nummer: int):
@@ -169,7 +175,7 @@ def search_halte(query: str) -> None:
             print("Ongeldige invoer")
 
 
-def main():
+def main(stdscr: curses.window):
     """
     Script:
     1) Ask user input
@@ -179,11 +185,32 @@ def main():
         'f'         -> list favorite stops
         '0'         -> exit script
     """
+    curses.curs_set(0)
+    max_height, max_width = stdscr.getmaxyx()
+    stdscr.clear()
+
+    win_output = curses.newwin(max_height - 3, max_width - 2, 2, 1)
+    # win_keys = curses.newwin(2, max_width, max_height - 1, 1)
+    # win_keys.box()
+
+    stdscr.box()
+    stdscr.addstr(0, 4, f" \U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C ")
+    stdscr.refresh()
+
+    print_favorites(win_output)
+
+    # win_keys.addstr(max_height, 1, f"h: {str(max_height)}\tw: {str(max_width)}")
+    # win_keys.refresh()
+
+    stdscr.getch()
+
+
+
+
+
     last_query = get_last_query()
-    print("######################################")
-    print("\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C")
-    print("######################################")
-    print_favorites()
+
+
     while True:
         if last_query:
             print(f"Druk enter om terug '{last_query}' op te zoeken")
@@ -212,4 +239,4 @@ def main():
 
 if __name__ == '__main__':
     signal(SIGINT, sigint_handler)
-    main()
+    curses.wrapper(main)
