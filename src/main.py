@@ -109,7 +109,6 @@ def print_halte_search_results(table: dict, query: str) -> None:
 
 def print_favorites(window) -> None:
     """Print favorites list"""
-    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
     stop_length = max([len(stop) for stop, _ in FAVORITES])
     window.clear()
     window.resize(len(FAVORITES) + 1, window.getmaxyx()[1])
@@ -185,13 +184,19 @@ def main(stdscr: curses.window):
         'f'         -> list favorite stops
         '0'         -> exit script
     """
+    last_query = get_last_query()
+
     curses.curs_set(0)
+
+    # Color setup
+    curses.init_color(curses.COLOR_CYAN, 321, 965, 965)  # -> light cyan
+    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
     max_height, max_width = stdscr.getmaxyx()
     stdscr.clear()
 
-    win_output = curses.newwin(max_height - 3, max_width - 2, 2, 1)
-    # win_keys = curses.newwin(2, max_width, max_height - 1, 1)
-    # win_keys.box()
+    win_output = curses.newwin(max_height - 5, max_width - 2, 2, 1)
+    win_keys = curses.newwin(2, max_width - 2, max_height - 5, 1)
+    win_input = curses.newwin(2, max_width - 2, max_height - 3, 1)
 
     stdscr.box()
     stdscr.addstr(0, 4, f" \U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C ")
@@ -199,24 +204,19 @@ def main(stdscr: curses.window):
 
     print_favorites(win_output)
 
-    # win_keys.addstr(max_height, 1, f"h: {str(max_height)}\tw: {str(max_width)}")
-    # win_keys.refresh()
+    if last_query:
+        win_keys.addstr(0, 1, "Geef haltenummer/zoekterm/favoriet, f = favorieten, 0 = afsluiten")
+    win_keys.addstr(1, 1, f"Druk op enter om terug '{last_query}' op te zoeken")
+    win_keys.refresh()
 
-    stdscr.getch()
+    win_input.addstr(0, 1, "invoer: ", curses.A_BOLD)
+    win_input.refresh()
 
-
-
-
-
-    last_query = get_last_query()
-
+    # todo: indications for no internet/api connection
+    # todo: get user input properly
+    user_input = stdscr.getch()
 
     while True:
-        if last_query:
-            print(f"Druk enter om terug '{last_query}' op te zoeken")
-
-        user_input = input("Halte (nr of naam), f = favorieten, 0 = afsluiten: ") or last_query
-
         if user_input == '0':
             break
 
