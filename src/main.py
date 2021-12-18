@@ -124,11 +124,8 @@ def doorkomsten(halte_nummer: int):
             data = delijnapi.api_get_doorkomsten(halte_nummer)
             lijnen = data['halte'][0]
             if line_filter is not None:
-                filtered = filter_doorkomsten(line_filter, lijnen)
-                print_doorkomsten(filtered)
-            else:
-                print_doorkomsten(lijnen)
-
+                lijnen['lijnen'] = [item for item in lijnen['lijnen'] if item['lijnNummerPubliek'] == line_filter]
+            print_doorkomsten(lijnen)
             save_query(halte_nummer)
 
         except (IndexError, TypeError) as e:
@@ -144,12 +141,6 @@ def doorkomsten(halte_nummer: int):
             user_input = input(f"Kies lijnnr ({lines}): ")
             if user_input in line_nrs:
                 line_filter = user_input
-
-
-def filter_doorkomsten(line_filter: str, lijnen: dict) -> dict:
-    """filter by a line-nr"""
-    lijnen['lijnen'] = [item for item in lijnen['lijnen'] if item['lijnNummerPubliek'] == line_filter]
-    return lijnen
 
 
 def search_halte(query: str) -> None:
