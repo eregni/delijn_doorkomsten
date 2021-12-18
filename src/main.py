@@ -19,7 +19,7 @@ I used the old api because the new one (https://data.delijn.be/) needs much more
 """
 import sys
 import curses
-from signal import signal, SIGINT
+from signal import signal, SIGINT, SIGHUP
 from datetime import datetime, timedelta
 
 import delijnapi
@@ -29,7 +29,7 @@ from favorites import FAVORITES
 QUERY_LOG = "search.txt"
 
 
-def sigint_handler(sig, frame) -> None:
+def signal_handler(sig, frame) -> None:
     """Handler for SIGINT signal"""
     print("\nctrl-c. Bye!")
     sys.exit(0)
@@ -185,6 +185,7 @@ def main(stdscr: curses.window):
         'f'         -> list favorite stops
         '0'         -> exit script
     """
+    curses.init_color(6, 224, 255, 255)
     curses.curs_set(0)
     max_height, max_width = stdscr.getmaxyx()
     stdscr.clear()
@@ -238,5 +239,6 @@ def main(stdscr: curses.window):
 
 
 if __name__ == '__main__':
-    signal(SIGINT, sigint_handler)
+    signal(SIGINT, signal_handler)
+    signal(SIGHUP, signal_handler)
     curses.wrapper(main)
