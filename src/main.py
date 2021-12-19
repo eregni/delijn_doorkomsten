@@ -20,12 +20,18 @@ I used the old api because the new one (https://data.delijn.be/) needs much more
 import sys
 from signal import signal, SIGINT
 from datetime import datetime, timedelta
+import urwid
 
 import delijnapi
 from tui import Colors, ICON
 from favorites import FAVORITES
 
 QUERY_LOG = "search.txt"
+
+
+def check_exit(key):
+    if key in ('q', 'Q'):
+        raise urwid.ExitMainLoop()
 
 
 def sigint_handler(sig, frame) -> None:
@@ -171,7 +177,39 @@ def main():
         'f'         -> list favorite stops
         '0'         -> exit script
     """
-    last_query = get_last_query()
+
+    import urwid
+
+    palette = [('I say', 'default,bold', 'default', 'bold'), ]
+    ask = urwid.Edit(('I say', u"What is your name?\n"))
+    reply = urwid.Text(u"")
+    button = urwid.Button(u'Exit')
+    div = urwid.Divider()
+    pile = urwid.Pile([ask, div, reply, div, button])
+    top = urwid.Filler(pile, valign='top')
+
+    def on_ask_change(edit, new_edit_text):
+        reply.set_text(('I say', u"Nice to meet you, %s" % new_edit_text))
+
+    def on_exit_clicked(button):
+        raise urwid.ExitMainLoop()
+
+    urwid.connect_signal(ask, 'change', on_ask_change)
+    urwid.connect_signal(button, 'click', on_exit_clicked)
+
+    urwid.MainLoop(top, palette).run()
+
+    # last_query = get_last_query()
+    #
+    # program_title = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
+    # txt_body = urwid.Text(u"Hello world", align='left')
+    # fill = urwid.Filler(txt_body, 'top')
+    # padd = urwid.Padding(fill, left=1)
+    # frame_main = urwid.LineBox(padd, title=program_title)
+    # loop = urwid.MainLoop(frame_main, unhandled_input=check_exit)
+    # loop.run()
+    # exit(0)
+
     print("######################################")
     print("\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C")
     print("######################################")
