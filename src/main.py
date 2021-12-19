@@ -16,14 +16,18 @@ used sources:
 API https://delijn.docs.apiary.io/
 
 I used the old api because the new one (https://data.delijn.be/) needs much more api calls and code.
+
+todo: indications for no internet/api connection???
+Todo: correct type hints for cursesWindow
 """
 import sys
 import curses
+import curses.ascii
 from signal import signal, SIGINT
 from datetime import datetime, timedelta
 
 import delijnapi
-from tui import Colors, ICON
+from tui import ICON
 from favorites import FAVORITES
 
 QUERY_LOG = "search.txt"
@@ -50,13 +54,14 @@ def get_last_query() -> str:
         return ""
 
 
-def print_doorkomsten(lijnen: dict) -> None:
+def print_doorkomsten(lijnen: dict, output_window: curses.window) -> None:
     """print parsed data in terminal"""
-    text_color = Colors.Fg.lightblue
-    print(f"\n{text_color}{lijnen['omschrijvingLang']} - haltenr: {lijnen['halteNummer']}")
-    text_color = Colors.Fg.lightgreen
+    output_window.clear()
+    text_color = curses.color_pair(1)
+    output_window.addstr(0, 1, f"{lijnen['omschrijvingLang']} - haltenr: {lijnen['halteNummer']}", text_color)
+    text_color = curses.color_pair(2)
 
-    for item in lijnen['lijnen']:
+    for index, item in enumerate(lijnen['lijnen']):
         vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
         vertrektijd_text = ""
         delay_text = ""
@@ -72,22 +77,24 @@ def print_doorkomsten(lijnen: dict) -> None:
                 vertrektijd_text = vertrektijd.strftime('%H:%M')
                 if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
                     delay = vertrektijd_rt - vertrektijd
-                    delay_text = f"{Colors.Fg.red}+{delay.seconds // 60}\'{text_color}"
+                    delay_text = f"+{delay.seconds // 60}\'"
                 elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
                     delay = vertrektijd - vertrektijd_rt
                     # add an extra min to increase chances of catching your bus...
-                    delay_text = f"{Colors.Fg.red}-{(delay.seconds // 60) + 1}\'{text_color}"
+                    delay_text = f"-{(delay.seconds // 60) + 1}\'"
             except TypeError:  # 'vertrekRealtimeTijdstip' = None (Sometimes, the api doesn't return the calculated ETA)
                 pass
         else:
             realtime_text = "GN RT"
 
         icon = ICON.get(item['lijnType'], "")
-        print(f"{text_color}{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
-              f"{realtime_text:<7}{vertrektijd_text:<7}{delay_text}")
-        text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
+        output_window.addstr(index + 1, 2,
+                             f"{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
+                             f"{realtime_text:<7}{vertrektijd_text:<7}{delay_text}", text_color)
 
-    print(Colors.reset)
+        text_color = curses.color_pair(3) if text_color == curses.color_pair(2) else curses.color_pair(2)
+
+    output_window.refresh()
 
 
 def print_halte_search_results(table: dict, query: str) -> None:
@@ -120,26 +127,32 @@ def print_favorites(window) -> None:
     window.refresh()
 
 
-def doorkomsten(halte_nummer: int):
+def doorkomsten(halte_nummer: int, output_window: curses.window, keys_window: curses.window, input_window: curses.window):
     """Loop for the doorkomsten table"""
     line_filter = None
     while True:
         try:
+            # todo: inform user when halte nr does not exists
             data = delijnapi.api_get_doorkomsten(halte_nummer)
             lijnen = data['halte'][0]
             if line_filter is not None:
-                filtered = filter_doorkomsten(line_filter, lijnen)
-                print_doorkomsten(filtered)
-            else:
-                print_doorkomsten(lijnen)
+                lijnen['lijnen'] = [item for item in lijnen['lijnen'] if item['lijnNummerPubliek'] == line_filter]
 
+            print_doorkomsten(lijnen, output_window)
             save_query(halte_nummer)
 
         except (IndexError, TypeError) as e:
-            print("Geen doorkomsten gevonden rond huidig tijdstip :-(")
+            output_window.clear()
+            output_window.addstr(0, 1, "Geen doorkomsten gevonden rond huidig tijdstip :-(", curses.color_pair(1))
+            output_window.refresh()
             break
 
-        user_input = input("Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, f = filter op lijnnr: ")
+        keys_window.clear()
+        keys_window.addstr(0, 1, "Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, f = filter op lijnnr")
+        keys_window.refresh()
+        keys_window.getch()
+        #user_input = input("Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, f = filter op lijnnr: ")
+        # todo continue here
         if user_input == '0':
             break
         elif user_input == 'f':
@@ -148,12 +161,6 @@ def doorkomsten(halte_nummer: int):
             user_input = input(f"Kies lijnnr ({lines}): ")
             if user_input in line_nrs:
                 line_filter = user_input
-
-
-def filter_doorkomsten(line_filter: str, lijnen: dict) -> dict:
-    """filter by a line-nr"""
-    lijnen['lijnen'] = [item for item in lijnen['lijnen'] if item['lijnNummerPubliek'] == line_filter]
-    return lijnen
 
 
 def search_halte(query: str) -> None:
@@ -174,6 +181,12 @@ def search_halte(query: str) -> None:
             print("Ongeldige invoer")
 
 
+def clear_input_window(window: curses.window):
+    window.clear()
+    window.addstr(0, 1, "invoer: ", curses.A_BOLD)
+    window.refresh()
+
+
 def main(stdscr: curses.window):
     """
     Script:
@@ -187,10 +200,16 @@ def main(stdscr: curses.window):
     last_query = get_last_query()
 
     curses.curs_set(0)
+    curses.echo()
+    curses.nocbreak()
 
     # Color setup
     curses.init_color(curses.COLOR_CYAN, 321, 965, 965)  # -> light cyan
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
+
     max_height, max_width = stdscr.getmaxyx()
     stdscr.clear()
 
@@ -201,40 +220,36 @@ def main(stdscr: curses.window):
     stdscr.box()
     stdscr.addstr(0, 4, f" \U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C ")
     stdscr.refresh()
-
     print_favorites(win_output)
 
     if last_query:
-        win_keys.addstr(0, 1, "Geef haltenummer/zoekterm/favoriet, f = favorieten, 0 = afsluiten")
-    win_keys.addstr(1, 1, f"Druk op enter om terug '{last_query}' op te zoeken")
+        win_keys.addstr(0, 1, f"Druk op enter om terug '{last_query}' op te zoeken")
+    win_keys.addstr(1, 1, "Geef haltenummer/zoekterm/favoriet, f = favorieten, 0 = afsluiten")
     win_keys.refresh()
 
-    win_input.addstr(0, 1, "invoer: ", curses.A_BOLD)
-    win_input.refresh()
-
-    # todo: indications for no internet/api connection
-    # todo: get user input properly
-    user_input = stdscr.getch()
+    clear_input_window(win_input)
 
     while True:
+        user_input = win_input.getstr(0, 9, 30)
+        clear_input_window(win_input)
         if user_input == '0':
             break
 
-        if user_input == '':  # user pressed [enter] and last_query is None
+        if user_input == b'':  # user pressed [enter] and last_query is None
             continue
 
-        if user_input == 'f':
-            print_favorites()
+        if user_input == b'f':
+            print_favorites(win_output)
 
         elif user_input.isdigit():
             user_input = int(user_input)
             if user_input - 1 in range(len(FAVORITES)):
-                doorkomsten(FAVORITES[user_input - 1][1])
+                doorkomsten(FAVORITES[user_input - 1][1], win_output, win_keys, win_input)
             else:
-                doorkomsten(user_input)
+                doorkomsten(user_input, win_output, win_keys, win_input)
 
         else:
-            search_halte(user_input)
+            search_halte(user_input, win_output)
 
 
 if __name__ == '__main__':
