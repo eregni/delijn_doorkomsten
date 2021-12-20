@@ -23,10 +23,14 @@ from datetime import datetime, timedelta
 import urwid
 
 import delijnapi
-from tui import Colors, ICON
+from tui import PALETTE, ICON
 from favorites import FAVORITES
 
 QUERY_LOG = "search.txt"
+
+
+def exit_urwid():
+    raise urwid.ExitMainLoop
 
 
 def check_exit(key):
@@ -112,14 +116,15 @@ def print_halte_search_results(table: dict, query: str) -> None:
     print(Colors.reset)
 
 
-def print_favorites() -> None:
+def print_favorites(text: urwid.Text) -> None:
     """Print favorites list"""
-    print(Colors.Fg.lightcyan)
     stop_length = max([len(stop) for stop, _ in FAVORITES])
+    fav_text = ""
     for index, (stop, nr) in enumerate(FAVORITES):
         index_text = f"{index + 1})"
-        print(f"{index_text:<4}{stop:<{stop_length}} ({nr})")
-    print(Colors.reset)
+        fav_text += f" {index_text:<4}{stop:<{stop_length}} ({nr})\n"
+
+    text.set_text([('lightcyan bold', "Favorieten\n"), ('lightcyan', fav_text)])
 
 
 def doorkomsten(halte_nummer: int):
@@ -177,43 +182,58 @@ def main():
         'f'         -> list favorite stops
         '0'         -> exit script
     """
-
-    import urwid
-
-    palette = [('I say', 'default,bold', 'default', 'bold'), ]
-    ask = urwid.Edit(('I say', u"What is your name?\n"))
-    reply = urwid.Text(u"")
-    button = urwid.Button(u'Exit')
-    div = urwid.Divider()
-    pile = urwid.Pile([ask, div, reply, div, button])
-    top = urwid.Filler(pile, valign='top')
-
-    def on_ask_change(edit, new_edit_text):
-        reply.set_text(('I say', u"Nice to meet you, %s" % new_edit_text))
-
-    def on_exit_clicked(button):
-        raise urwid.ExitMainLoop()
-
-    urwid.connect_signal(ask, 'change', on_ask_change)
-    urwid.connect_signal(button, 'click', on_exit_clicked)
-
-    urwid.MainLoop(top, palette).run()
-
-    # last_query = get_last_query()
+    # palette = [('I say', 'default,bold', 'default', 'bold'), ]
+    # ask = urwid.Edit(('I say', u"What is your name?\n"))
+    # reply = urwid.Text(u"")
+    # button = urwid.Button(u'Exit')
+    # div = urwid.Divider()
+    # pile = urwid.Pile([ask, div, reply, div, button])
+    # top = urwid.Filler(pile, valign='top')
     #
-    # program_title = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
-    # txt_body = urwid.Text(u"Hello world", align='left')
-    # fill = urwid.Filler(txt_body, 'top')
-    # padd = urwid.Padding(fill, left=1)
-    # frame_main = urwid.LineBox(padd, title=program_title)
-    # loop = urwid.MainLoop(frame_main, unhandled_input=check_exit)
-    # loop.run()
+    # def on_ask_change(edit, new_edit_text):
+    #     reply.set_text(('I say', u"Nice to meet you, %s" % new_edit_text))
+    #
+    # def on_exit_clicked(button):
+    #     raise urwid.ExitMainLoop()
+    #
+    # urwid.connect_signal(ask, 'change', on_ask_change)
+    # urwid.connect_signal(button, 'click', on_exit_clicked)
+    #
+    # urwid.MainLoop(top, palette).run()
     # exit(0)
 
-    print("######################################")
-    print("\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C")
-    print("######################################")
-    print_favorites()
+    last_query = get_last_query()
+
+    program_title = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
+    user_input = urwid.Edit(u"Invoer: ")
+    button_exit = urwid.Button(u"afsluiten (q)", on_press=exit_urwid)
+    txt_output = urwid.Text(('red', u"Hello world"), align='left')
+    button_search = urwid.Button(u"Enter")
+    # output_fill = urwid.Filler(txt_output,  'top')
+    # output_padd = urwid.Padding(output_fill, left=
+    # todo layout input (1 row), extra info Text (~3 row) etc...
+    # todo button: widget for button layout
+    button_column = urwid.Columns([
+        urwid.Filler(button_exit),
+        urwid.Filler(button_search)
+    ], dividechars=1)
+
+    main_frame = urwid.Pile([
+        urwid.Filler(user_input, 'top'),
+        button_column,
+        urwid.Filler(txt_output, 'top')
+    ], focus_item=0)
+
+    main_window = urwid.LineBox(urwid.Padding(main_frame, left=1), title=program_title)
+    loop = urwid.MainLoop(main_window, unhandled_input=check_exit, palette=PALETTE)
+
+    print_favorites(txt_output)
+
+    loop.run()
+
+
+
+    exit(0)
     while True:
         if last_query:
             print(f"Druk enter om terug '{last_query}' op te zoeken")
