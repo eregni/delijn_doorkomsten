@@ -80,6 +80,7 @@ def print_doorkomsten(lijnen: dict) -> None:
                 pass
         else:
             realtime_text = "GN RT"
+            vertrektijd_text = vertrektijd.strftime('%H:%M')
 
         icon = ICON.get(item['lijnType'], "")
         print(f"{text_color}{icon} {item['lijnType']:<5}{ item['lijnNummerPubliek']:<4}{item['bestemming']:<25}"
