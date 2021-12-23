@@ -17,8 +17,7 @@ API https://delijn.docs.apiary.io/
 
 I used the old api because the new one (https://data.delijn.be/) needs much more api calls and code.
 """
-import sys
-from signal import signal, SIGINT
+from signal import signal, SIGINT, SIGHUP
 from datetime import datetime, timedelta
 import urwid
 
@@ -27,21 +26,6 @@ from tui import PALETTE, ICON
 from favorites import FAVORITES
 
 QUERY_LOG = "search.txt"
-
-
-def exit_urwid():
-    raise urwid.ExitMainLoop
-
-
-def check_exit(key):
-    if key in ('q', 'Q'):
-        raise urwid.ExitMainLoop()
-
-
-def sigint_handler(sig, frame) -> None:
-    """Handler for SIGINT signal"""
-    print("\nctrl-c. Bye!")
-    sys.exit(0)
 
 
 def save_query(query_input: [str, int]) -> None:
@@ -54,7 +38,7 @@ def get_last_query() -> str:
     """Read last search entry from text file"""
     try:
         with open(QUERY_LOG, "r") as file:
-            return file.read()
+            return file.readline().rstrip()
     except FileNotFoundError:
         return ""
 
@@ -172,94 +156,108 @@ def search_halte(query: str) -> None:
             print("Ongeldige invoer")
 
 
+def button_favs_handler(button: urwid.Button, text: urwid.Text) -> None:
+    print_favorites(text)
+
+
+def exit_urwid(*args):
+    raise urwid.ExitMainLoop()
+
+
+def unhandled_input_handler(key):
+    if key in ('q', 'Q'):
+        raise urwid.ExitMainLoop()
+
+
+def signal_handler(*args) -> None:
+    """Handler for SIGINT signal"""
+    exit_urwid("signal")
+
+
 def main():
     """
-    Script:
-    1) Ask user input
-    2) User input is
-        int/haltenr -> get doorkomst info or select favorite
-        string      -> Search halte by name
-        'f'         -> list favorite stops
-        '0'         -> exit script
+    Script flow:
+        * Start:
+            User input: haltenummer -> Doorkomsten | search by name -> Search halte | fav nr -> Doorkomsten
+            Buttons: favs, exit
+            Output: fav list
+
+            * Search halte:
+                User input: nr search result -> Doorkomsten
+                Buttons: new search -> Start, exit
+                Output: search results
+
+            * Doorkomsten
+                User input: 'f' -> Doorkomsten(filter)
+                Buttons: new search -> Start, refresh, filter, [remove filter], exit
+                Output: doormkomsten [filtered line] (autorefresh each 30 seconds)
     """
-    # palette = [('I say', 'default,bold', 'default', 'bold'), ]
-    # ask = urwid.Edit(('I say', u"What is your name?\n"))
-    # reply = urwid.Text(u"")
-    # button = urwid.Button(u'Exit')
-    # div = urwid.Divider()
-    # pile = urwid.Pile([ask, div, reply, div, button])
-    # top = urwid.Filler(pile, valign='top')
-    #
-    # def on_ask_change(edit, new_edit_text):
-    #     reply.set_text(('I say', u"Nice to meet you, %s" % new_edit_text))
-    #
-    # def on_exit_clicked(button):
-    #     raise urwid.ExitMainLoop()
-    #
-    # urwid.connect_signal(ask, 'change', on_ask_change)
-    # urwid.connect_signal(button, 'click', on_exit_clicked)
-    #
-    # urwid.MainLoop(top, palette).run()
-    # exit(0)
+    class UserInput(urwid.Padding):
+        def keypress(self, size, key):
+            if key == 'enter':
+                edit_text: str = self.original_widget.edit_text
+                if edit_text == '' and last_query:
+                    edit_text = last_query
 
-    last_query = get_last_query()
+                if edit_text.isdigit():
+                    nr = int(edit_text)
+                    if nr - 1 in range(len(FAVORITES)):
+                        pass  # todo update doorkomsten()
+                        # doorkomsten(FAVORITES[nr - 1][1])
+                    else:
+                        pass  # todo update doorkomsten()
+                        # doorkomsten(nr)
+                else:
+                    pass  # todo update search_halte()
+                    # search_halte(edit_text)
 
+                return super(UserInput, self).original_widget.set_edit_text("")
+
+            else:
+                return super(UserInput, self).keypress(size, key)
+
+    # urwid layout + callbacks
     program_title = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
-    user_input = urwid.Edit(u"Invoer: ")
-    button_exit = urwid.Button(u"afsluiten (q)", on_press=exit_urwid)
-    txt_output = urwid.Text(('red', u"Hello world"), align='left')
-    button_search = urwid.Button(u"Enter")
-    # output_fill = urwid.Filler(txt_output,  'top')
-    # output_padd = urwid.Padding(output_fill, left=
-    # todo layout input (1 row), extra info Text (~3 row) etc...
-    # todo button: widget for button layout
+    div = urwid.Divider(div_char='-')
+    edit = urwid.Edit(('bold', u"Geef haltenummer of zoekterm: "))
+    txt_output = urwid.Text(u"", align='left')
+    txt_info = urwid.Text(u"")
+    input_user = UserInput(edit)
+    # urwid.connect_signal(input_user, 'change', input_handler, user_args=[txt_info, txt_output])
+    button_exit = urwid.Button(u"Afsluiten", on_press=exit_urwid)
+    button_favs = urwid.Button(u"Favorieten", on_press=button_favs_handler, user_data=txt_output)
+    # todo add button <remove/filter> and <new search> in submenus
     button_column = urwid.Columns([
-        urwid.Filler(button_exit),
-        urwid.Filler(button_search)
+        urwid.Padding(button_exit, width=9+4),  # len(Button.label + 4 button chars
+        urwid.Padding(button_favs, width=10+4)
     ], dividechars=1)
 
-    main_frame = urwid.Pile([
-        urwid.Filler(user_input, 'top'),
-        button_column,
-        urwid.Filler(txt_output, 'top')
-    ], focus_item=0)
+    pile = urwid.Pile([
+        input_user,
+        div,
+        urwid.Padding(button_column, width=29),  # total chars buttons + nr of columndivider chars
+        div,
+        txt_output
+    ], focus_item=1)
 
-    main_window = urwid.LineBox(urwid.Padding(main_frame, left=1), title=program_title)
-    loop = urwid.MainLoop(main_window, unhandled_input=check_exit, palette=PALETTE)
+    main_window = urwid.Filler(pile, valign='top')
+    main_window = urwid.LineBox(urwid.Padding(main_window, left=1), title=program_title)
+    loop = urwid.MainLoop(main_window, unhandled_input=unhandled_input_handler, palette=PALETTE)
+
+    # program
+    last_query = get_last_query()
+    if last_query:
+        txt_info.set_text(f"Druk op enter om terug '{last_query}' op te zoeken")
+        pile.widget_list.insert(0, txt_info)
+        pile.focus_item = 1
 
     print_favorites(txt_output)
 
     loop.run()
-
-
-
     exit(0)
-    while True:
-        if last_query:
-            print(f"Druk enter om terug '{last_query}' op te zoeken")
-
-        user_input = input("Halte (nr of naam), f = favorieten, 0 = afsluiten: ") or last_query
-
-        if user_input == '0':
-            break
-
-        if user_input == '':  # user pressed [enter] and last_query is None
-            continue
-
-        if user_input == 'f':
-            print_favorites()
-
-        elif user_input.isdigit():
-            user_input = int(user_input)
-            if user_input - 1 in range(len(FAVORITES)):
-                doorkomsten(FAVORITES[user_input - 1][1])
-            else:
-                doorkomsten(user_input)
-
-        else:
-            search_halte(user_input)
 
 
 if __name__ == '__main__':
-    signal(SIGINT, sigint_handler)
+    signal(SIGINT, signal_handler)
+    signal(SIGHUP, signal_handler)
     main()

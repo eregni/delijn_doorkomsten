@@ -9,6 +9,7 @@ ICON = {
 
 
 PALETTE = [
+    ('bold', 'white,bold', 'black'),
     ('red', 'light red', 'black'),
     ('lightcyan', 'light cyan', 'black'),
     ('lightcyan bold', 'light cyan,bold', 'black'),
