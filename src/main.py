@@ -23,9 +23,10 @@ import urwid
 
 import delijnapi
 from tui import PALETTE, ICON
-from favorites import FAVORITES
+import bookmarks
 
 QUERY_LOG = "search.txt"
+FAVORITES = [item for item in bookmarks.BOOKMARKS.items()]
 
 
 def save_query(query_input: [str, int]) -> None:
@@ -83,35 +84,34 @@ def print_doorkomsten(lijnen: dict) -> None:
     print(Colors.reset)
 
 
-def print_halte_search_results(table: dict, query: str) -> None:
+def print_halte_search_results(table: dict, query: str, output_text: urwid.Text) -> None:
     """print parsed data in terminal from 'api_search_halte' function"""
-    text_color = Colors.Fg.lightblue
-    print(f"\n{text_color}\"{query}\"")
-    text_color = Colors.Fg.lightgreen
+    output_text.set_text(('lightcyan', f"\n\"{query}\""))
+    text_color = 'green'
     haltes = table['haltes']
+    text = []
     for index, halte in enumerate(haltes):
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
-        print(f"{text_color}{index + 1}) {halte['omschrijvingLang']} - haltenr: {halte['halteNummer']} - Lijnen: "
-              f"{lijn_nummers} Richting: {bestemmingen}")
+        text.append((text_color, f"{index + 1}) {halte['omschrijvingLang']} - haltenr: "f"{halte['halteNummer']} - "
+                                 f"Lijnen: {lijn_nummers} Richting: {bestemmingen}\n"))
+        text_color = 'yellow' if text_color == 'green' else 'green'
 
-        text_color = Colors.Fg.yellow if text_color == Colors.Fg.lightgreen else Colors.Fg.lightgreen
-
-    print(Colors.reset)
+    output_text.set_text(text)
 
 
-def print_favorites(text: urwid.Text) -> None:
-    """Print favorites list"""
+def print_bookmarks(output_text: urwid.Text) -> None:
+    """Print bookmark list"""
     stop_length = max([len(stop) for stop, _ in FAVORITES])
-    fav_text = ""
+    bookmark_text = ""
     for index, (stop, nr) in enumerate(FAVORITES):
         index_text = f"{index + 1})"
-        fav_text += f" {index_text:<4}{stop:<{stop_length}} ({nr})\n"
+        bookmark_text += f" {index_text:<4}{stop:<{stop_length}} ({nr})\n"
 
-    text.set_text([('lightcyan bold', "Favorieten\n"), ('lightcyan', fav_text)])
+    output_text.set_text([('lightcyan bold', "Favorieten\n"), ('lightcyan', bookmark_text)])
 
 
-def doorkomsten(halte_nummer: int):
+def doorkomsten(halte_nummer: int, output_text: urwid.Text) -> None:
     """Loop for the doorkomsten table"""
     line_filter = None
     while True:
@@ -123,9 +123,14 @@ def doorkomsten(halte_nummer: int):
             print_doorkomsten(lijnen)
             save_query(halte_nummer)
 
-        except (IndexError, TypeError) as e:
-            print("Geen doorkomsten gevonden rond huidig tijdstip :-(")
+        except IndexError as e:
+            # todo more nuance in exceptions... test!
+            output_text.set_text(('red bold', u"Geen doorkomsten gevonden"))
+        except TypeError as e:
+            output_text.set_text(('red bold', u"Geen doorkomsten gevonden rond huidig tijdstip :-("))
             break
+        # todo continue here
+        return
 
         user_input = input("Willekeurige knop = vernieuwen. 0 = opnieuw beginnen, f = filter op lijnnr: ")
         if user_input == '0':
@@ -138,26 +143,29 @@ def doorkomsten(halte_nummer: int):
                 line_filter = user_input
 
 
-def search_halte(query: str) -> None:
+def search_halte(query: str, output_text: urwid.Text, user_input: urwid.Edit) -> None:
     data = delijnapi.api_search_halte(query)
     if data is None:
         return
     if not data['haltes']:
-        print("\nNiets gevonden.probeer een andere zoekterm")
+        output_text.set_text(('red bold', "\nNiets gevonden.probeer een andere zoekterm"))
     else:
-        print_halte_search_results(data, query)
+        print_halte_search_results(data, query, txt_output)
         save_query(query)
+        user_input.set_caption(('bold', "Geef nummer: "))
+        return
+        # todo continue here: change all button inputs/callbacks. Add buttons...
         user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
         if user_input != '0' and user_input.isdigit():
             user_input = int(user_input) - 1
             haltenr = data['haltes'][user_input]['halteNummer']
-            doorkomsten(haltenr)
+            doorkomsten(haltenr, output_text)
         else:
-            print("Ongeldige invoer")
+            output_text.set_text(('red bold', "Ongeldige invoer"))
 
 
-def button_favs_handler(button: urwid.Button, text: urwid.Text) -> None:
-    print_favorites(text)
+def button_bookmarks_handler(button: urwid.Button, text: urwid.Text) -> None:
+    print_bookmarks(text)
 
 
 def exit_urwid(*args):
@@ -174,70 +182,77 @@ def signal_handler(*args) -> None:
     exit_urwid("signal")
 
 
-def main():
-    """
-    Script flow:
-        * Start:
-            User input: haltenummer -> Doorkomsten | search by name -> Search halte | fav nr -> Doorkomsten
-            Buttons: favs, exit
-            Output: fav list
+class UserInput(urwid.Padding):
+    def keypress(self, size, key):
+        if key == 'enter':
+            edit_text: str = self.original_widget.edit_text
+            if edit_text == '' and last_query:
+                edit_text = last_query
 
-            * Search halte:
-                User input: nr search result -> Doorkomsten
-                Buttons: new search -> Start, exit
-                Output: search results
-
-            * Doorkomsten
-                User input: 'f' -> Doorkomsten(filter)
-                Buttons: new search -> Start, refresh, filter, [remove filter], exit
-                Output: doormkomsten [filtered line] (autorefresh each 30 seconds)
-    """
-    class UserInput(urwid.Padding):
-        def keypress(self, size, key):
-            if key == 'enter':
-                edit_text: str = self.original_widget.edit_text
-                if edit_text == '' and last_query:
-                    edit_text = last_query
-
-                if edit_text.isdigit():
-                    nr = int(edit_text)
-                    if nr - 1 in range(len(FAVORITES)):
-                        pass  # todo update doorkomsten()
-                        # doorkomsten(FAVORITES[nr - 1][1])
-                    else:
-                        pass  # todo update doorkomsten()
-                        # doorkomsten(nr)
+            if edit_text.isdigit():
+                nr = int(edit_text)
+                if nr - 1 in range(len(bookmarks.BOOKMARKS)):
+                    # todo update doorkomsten()
+                    doorkomsten(FAVORITES[nr - 1], txt_output)
                 else:
-                    pass  # todo update search_halte()
-                    # search_halte(edit_text)
-
-                return super(UserInput, self).original_widget.set_edit_text("")
-
+                    pass  # todo update doorkomsten()
+                    doorkomsten(nr, txt_output)
             else:
-                return super(UserInput, self).keypress(size, key)
+                search_halte(edit_text, txt_output, input_user.original_widget)
+
+            return super(UserInput, self).original_widget.set_edit_text("")
+
+        else:
+            return super(UserInput, self).keypress(size, key)
+
+
+if __name__ == '__main__':
+    """
+        Script flow:
+            * Start:
+                User input: haltenummer -> Doorkomsten | search by name -> Search halte | bookmark nr -> Doorkomsten
+                Buttons: bookmarks, exit
+                Output: bookmarks list
+
+                * Search halte:
+                    User input: nr search result -> Doorkomsten
+                    Buttons: new search -> Start, exit
+                    Output: search results
+
+                * Doorkomsten
+                    User input: 'f' -> Doorkomsten(filter)
+                    Buttons: new search -> Start, refresh, filter, [remove filter], exit
+                    Output: doormkomsten [filtered line] (autorefresh each 30 seconds)
+        """
+    signal(SIGINT, signal_handler)
+    signal(SIGHUP, signal_handler)
 
     # urwid layout + callbacks
     program_title = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
     div = urwid.Divider(div_char='-')
     edit = urwid.Edit(('bold', u"Geef haltenummer of zoekterm: "))
-    txt_output = urwid.Text(u"", align='left')
+    txt_output = urwid.Text(u"", align='left')  # TODO FIRST turn into scrollList before continuing adjusting functions
     txt_info = urwid.Text(u"")
     input_user = UserInput(edit)
     # urwid.connect_signal(input_user, 'change', input_handler, user_args=[txt_info, txt_output])
     button_exit = urwid.Button(u"Afsluiten", on_press=exit_urwid)
-    button_favs = urwid.Button(u"Favorieten", on_press=button_favs_handler, user_data=txt_output)
+    button_bookmarks = urwid.Button(u"Favorieten", on_press=button_bookmarks_handler, user_data=txt_output)
     # todo add button <remove/filter> and <new search> in submenus
     button_column = urwid.Columns([
-        urwid.Padding(button_exit, width=9+4),  # len(Button.label + 4 button chars
-        urwid.Padding(button_favs, width=10+4)
-    ], dividechars=1)
+        # width -> len(Button.label + 4 button chars. 'pack' didn't work very well...
+        (len(button_exit.label) + 4, button_exit),t
+        (len(button_bookmarks.label) + 4, button_bookmarks)
+    ], dividechars=1, box_columns=[
+        button_exit,
+        button_bookmarks
+    ])
 
     pile = urwid.Pile([
         input_user,
         div,
-        urwid.Padding(button_column, width=29),  # total chars buttons + nr of columndivider chars
+        txt_output,
         div,
-        txt_output
+        ('pack', button_column)
     ], focus_item=1)
 
     main_window = urwid.Filler(pile, valign='top')
@@ -251,13 +266,7 @@ def main():
         pile.widget_list.insert(0, txt_info)
         pile.focus_item = 1
 
-    print_favorites(txt_output)
+    print_bookmarks(txt_output)
 
     loop.run()
     exit(0)
-
-
-if __name__ == '__main__':
-    signal(SIGINT, signal_handler)
-    signal(SIGHUP, signal_handler)
-    main()
