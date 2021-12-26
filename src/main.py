@@ -45,6 +45,7 @@ Script flow:
 from enum import Enum
 from signal import signal, SIGINT, SIGHUP
 from datetime import datetime, timedelta
+from typing import Optional
 
 import urwid
 
@@ -53,7 +54,7 @@ from tui import PALETTE, ICON
 import bookmarks
 
 QUERY_LOG = "search.txt"
-FAVORITES = [item for item in bookmarks.BOOKMARKS.items()]
+BOOKMARKS = list(bookmarks.BOOKMARKS.items())
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
 
 UrwidText = list[tuple[str, str]]
@@ -72,13 +73,14 @@ class Output(urwid.Padding):
 
         self.txt_output = urwid.Text(u"", align='left')  # TODO change to listbox
         self.txt_info = urwid.Text(u"")
+        self.txt_error = urwid.Text(u"")  # todo implement text object to display the errors
 
         self.button_exit = urwid.Button(u"Afsluiten", on_press=exit_urwid)
         self.button_bookmarks = urwid.Button(u"Favorieten", on_press=button_bookmarks_handler, user_data=self)
         self.button_new_search = urwid.Button(u"Nieuwe zoekopdracht", on_press=button_main_menu_handler, user_data=self)
         self.button_filter = urwid.Button(u"Filteren", on_press=button_filter_handler, user_data=line_filter)
         self.button_remove_filter = urwid.Button(u"Filter verwijderen", on_press=button_filter_handler)
-        self.buttons = urwid.Columns([], dividechars=1)
+        self.buttons = urwid.Columns([self.button_exit], dividechars=1, box_columns=[self.button_exit])
 
         self.pile = urwid.Pile([
             self.input_user,
@@ -104,8 +106,8 @@ class Output(urwid.Padding):
         self.input_user.original_widget.set_edit_text("")
         self.txt_output.set_text(get_bookmarks())
         self._set_buttons([
-            self.button_exit,
-            self.button_bookmarks
+            self.button_bookmarks,
+            self.button_exit
         ])
 
         global last_query
@@ -116,7 +118,9 @@ class Output(urwid.Padding):
             self.pile.focus_item = 1
 
     def set_search_halte_menu(self, search_result: UrwidText):
-        self.input_user.original_widget.set_caption("Kies een nr: ")
+        keys = [key for key, _ in enumerate(search_result)]
+        # first item in last_search is a summary line
+        self.input_user.original_widget.set_caption(f"Kies een nr({min(keys) + 1}-{max(keys)}): ")
         self.txt_output.set_text(search_result)
         self._set_buttons([
             self.button_new_search,
@@ -139,7 +143,7 @@ class Output(urwid.Padding):
         setattr(self.pile, 'focus_position', 0)
 
     def set_choose_line_filter(self):
-        raise NotImplementedError
+        raise NotImplementedError  # todo
 
     def set_filtered_doorkomsten_menu(self, dk: UrwidText):
         self.txt_output.set_text(dk)
@@ -185,18 +189,20 @@ class UserInput(urwid.Padding):
     def __init__(self, user_input: urwid.Edit):
         super().__init__(user_input)
 
-    def keypress(self, size: tuple, key: str):
+    def keypress(self, size: tuple, key: str) -> Optional[str]:
+        """Select handler for keypress"""
         global state
         if state == States.main:
-            self._process_main(size, key)
+            return self._process_main(size, key)
         elif state == States.doorkomsten_menu:
-            self._proces_doorkomsten(size, key)
+            return self._process_doorkomsten(size, key)
         elif state == States.search_halte_menu:
-            self._process_search_halte(size, key)
+            return self._process_search_halte(size, key)
         elif state == States.filter_menu:
-            self._process_filter(size, key)
+            return self._process_filter(size, key)
 
-    def _process_main(self, size: tuple, key: str):
+    def _process_main(self, size: tuple, key: str) -> Optional[str]:
+        """Handler for keypress in main menu"""
         if key != 'enter':
             return super(UserInput, self).keypress(size, key)
 
@@ -207,8 +213,8 @@ class UserInput(urwid.Padding):
 
         if edit_text.isdigit():
             nr = int(edit_text)
-            if nr - 1 in range(len(bookmarks.BOOKMARKS)):
-                doorkomsten(output, FAVORITES[nr - 1][1])
+            if nr - 1 in range(len(BOOKMARKS)):
+                doorkomsten(output, BOOKMARKS[nr - 1][1])
             else:
                 doorkomsten(output, nr)
 
@@ -217,14 +223,36 @@ class UserInput(urwid.Padding):
 
         return super(UserInput, self).original_widget.set_edit_text("")
 
-    def _process_doorkomsten(self, size: tuple, key: str):
-        raise NotImplementedError
+    def _process_doorkomsten(self, size: tuple, key: str) -> Optional[str]:
+        """Handler for keypress in doorkomsten menu. Actions are triggered here by keypress instead of submit"""
+        global state
+        if key == 'enter':
+            doorkomsten(output, int(last_query))
+        elif key == 'f':
+            output.set_choose_line_filter()
+            state = States.filter_menu
+        else:
+            return super(UserInput, self).keypress(size, key)
 
     def _process_search_halte(self, size: tuple, key: str):
-        raise NotImplementedError
+        """Handler for keypress in search halte menu."""
+        if key != 'enter':
+            return super(UserInput, self).keypress(size, key)
+
+        edit_text: str = self.original_widget.edit_text
+        global last_search
+        if edit_text.isdigit() and int(edit_text) - 1 in range(len(last_search['haltes'])):
+            haltenr = last_search['haltes'][int(edit_text) - 1]['halteNummer']
+            doorkomsten(output, haltenr)
+        else:
+            text = [('red', f"Ongeldige invoer")] + get_doorkomsten_text(last_search)
+            # todo what happens with the menu in case of doorkomsten exceptions? -> implement extra urwid Text object
+            output.txt_output.set_text(text)
+
+        return super(UserInput, self).original_widget.set_edit_text("")
 
     def _process_filter(self, size: tuple, key: str):
-        raise NotImplementedError
+        raise NotImplementedError  # todo -> process input in filter menu
 
 
 def save_query(query_input: [str, int]) -> None:
@@ -272,6 +300,7 @@ def get_doorkomsten_text(dk: dict) -> UrwidText:
                 pass
         else:
             realtime_text = "GN RT"
+            vertrektijd_text = vertrektijd.strftime('%H:%M')
 
         icon = ICON.get(item['lijnType'], "")
         line = [(text_color,
@@ -285,11 +314,12 @@ def get_doorkomsten_text(dk: dict) -> UrwidText:
     return text
 
 
-def get_halte_search_results_text(table: dict, query: str) -> UrwidText:
-    """print parsed data in terminal from 'api_search_halte' function"""
-    text = [('lightcyan', f"\n\"{query}\": {len(table)} resultaten\n")]
+def get_halte_search_results_text(results: dict, query: str) -> UrwidText:
+    """Get text with urwid markup, parsed from 'api_search_halte' result"""
+    haltes = results['haltes']
+    text = [('lightcyan', f"\n\"{query}\": {len(results['haltes'])} resultaten\n")]
     text_color = 'green'
-    haltes = table['haltes']
+
     for index, halte in enumerate(haltes):
         lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
         bestemmingen = ", ".join(halte['bestemmingen'])
@@ -302,9 +332,9 @@ def get_halte_search_results_text(table: dict, query: str) -> UrwidText:
 
 def get_bookmarks() -> UrwidText:
     """Give string + urwid markup from bookmark list"""
-    stop_length = max([len(stop) for stop, _ in FAVORITES])
+    stop_length = max([len(stop) for stop, _ in BOOKMARKS])
     bookmark_text = ""
-    for index, (stop, nr) in enumerate(FAVORITES):
+    for index, (stop, nr) in enumerate(BOOKMARKS):
         index_text = f"{index + 1})"
         bookmark_text += f" {index_text:<4}{stop:<{stop_length}} ({nr})\n"
 
@@ -313,12 +343,10 @@ def get_bookmarks() -> UrwidText:
 
 def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
     """Process the doorkomsten table"""
-    global last_doorkomsten
-    try:
-        data = delijnapi.api_get_doorkomsten(halte_nummer)
-    except TypeError as e:
-        # todo more nuance in exceptions... test!
-        return out.txt_output.set_text(('red bold', u"Geen doorkomsten gevonden"))
+    global last_doorkomsten, state
+    data = delijnapi.api_get_doorkomsten(halte_nummer)
+    if not data['halte']:
+        return out.txt_output.set_text(('red bold', u"Geen halte gevonden"))
 
     try:
         last_doorkomsten = data['halte'][0]
@@ -327,7 +355,7 @@ def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
         doorkomsten_output = get_doorkomsten_text(last_doorkomsten)
         out.set_doorkomsten_menu(doorkomsten_output)
         save_query(halte_nummer)
-
+        state = States.doorkomsten_menu
     except IndexError as e:
         out.txt_output.set_text(('red bold', u"Geen doorkomsten gevonden rond huidig tijdstip :-("))
 
@@ -343,17 +371,9 @@ def search_halte(out: Output, query: str) -> None:
         search_output = get_halte_search_results_text(data, query)
         out.set_search_halte_menu(search_output)
         save_query(query)
-        global state
+        global state, last_search
         state = States.search_halte_menu
-        return
-        # todo continue here -> implement choose result nr...
-        user_input = input("\nKies nr. 0 = opnieuw beginnen: ")
-        if user_input != '0' and user_input.isdigit():
-            user_input = int(user_input) - 1
-            haltenr = data['haltes'][user_input]['halteNummer']
-            doorkomsten(haltenr, output_text)
-        else:
-            output_text.set_text(('red bold', "Ongeldige invoer"))
+        last_search = data
 
 
 class States(Enum):
@@ -370,7 +390,8 @@ if __name__ == '__main__':
     line_filter = None
     state = States.main
     output = Output()
-    last_doorkomsten = []
+    last_doorkomsten: dict = {}
+    last_search: dict = {}
     loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
     loop.run()
     exit(0)
