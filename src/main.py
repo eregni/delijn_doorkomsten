@@ -188,7 +188,7 @@ class UserInput(urwid.Padding):
     def keypress(self, size: tuple, key: str):
         global state
         if state == States.main:
-            self._proces_main(size, key)
+            self._process_main(size, key)
         elif state == States.doorkomsten_menu:
             self._proces_doorkomsten(size, key)
         elif state == States.search_halte_menu:
@@ -196,7 +196,7 @@ class UserInput(urwid.Padding):
         elif state == States.filter_menu:
             self._process_filter(size, key)
 
-    def _proces_main(self, size: tuple, key: str):
+    def _process_main(self, size: tuple, key: str):
         if key != 'enter':
             return super(UserInput, self).keypress(size, key)
 
@@ -311,11 +311,16 @@ def get_bookmarks() -> UrwidText:
     return [('lightcyan bold', "Favorieten\n"), ('lightcyan', bookmark_text)]
 
 
-def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None, ) -> None:
+def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
     """Process the doorkomsten table"""
     global last_doorkomsten
     try:
         data = delijnapi.api_get_doorkomsten(halte_nummer)
+    except TypeError as e:
+        # todo more nuance in exceptions... test!
+        return out.txt_output.set_text(('red bold', u"Geen doorkomsten gevonden"))
+
+    try:
         last_doorkomsten = data['halte'][0]
         if linefilter is not None:
             last_doorkomsten['lijnen'] = [item for item in last_doorkomsten['lijnen'] if item['lijnNummerPubliek'] == linefilter]
@@ -324,9 +329,6 @@ def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None, ) -> Non
         save_query(halte_nummer)
 
     except IndexError as e:
-        # todo more nuance in exceptions... test!
-        out.txt_output.set_text(('red bold', u"Geen doorkomsten gevonden"))
-    except TypeError as e:
         out.txt_output.set_text(('red bold', u"Geen doorkomsten gevonden rond huidig tijdstip :-("))
 
 
