@@ -41,6 +41,7 @@ Script flow:
             User input: line nr to filter -> Doorkomsten menu with filtered doorkomsten
 
 # todo parse info about delays/disruptions/detours
+# todo packaging
 """
 from enum import Enum
 from signal import signal, SIGINT, SIGHUP
@@ -346,7 +347,7 @@ def get_doorkomsten_text(dk: dict) -> UrwidText:
 
         icon = ICON.get(item['lijnType'], "")
         line = [(text_color,
-                 f"{icon} {item['lijnType']:<5}{item['lijnNummerPubliek']:<4}{item['bestemming']:<25}{realtime_text:<7}"
+                 f"{icon} {item['lijnType']:<5}{item['lijnNummerPubliek']:<4}{item['bestemming']:<20}{realtime_text:<7}"
                  f"{vertrektijd_text:<7}"),
                 '\n' if delay_text is None else delay_text]
 
@@ -398,6 +399,8 @@ def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
         state = States.doorkomsten_menu
     except IndexError:
         out.txt_output.set_text(('red bold', u"Geen halte of doorkomsten rond huidig tijdstip gevonden"))
+    except TypeError:
+        out.txt_output.set_text(('red bold', u"Couldn't reach api. Is there an internet connection?"))
 
 
 def search_halte(out: Output, query: str) -> None:

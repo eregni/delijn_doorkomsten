@@ -14,7 +14,7 @@ def call_api(url: str) -> dict:
         result = requests.get(f"{url}")
         return result.json()
     except requests.ConnectionError:
-        print("Http error!; Is there an internet connection?")
+        pass  # todo Find out how to pass on exceptions properly. (Silencing this triggers a TypeError later in doorkomsten function
     except ValueError:
         pass  # silence json decode exceptions
 
