@@ -74,7 +74,6 @@ class Output(urwid.Padding):
 
         self.txt_output = urwid.Text(u"", align='left')  # TODO change to listbox
         self.txt_info = urwid.Text(u"")
-        self.txt_error = urwid.Text(u"")  # todo implement text object to display the errors
 
         self.button_exit = urwid.Button(u"Afsluiten", on_press=exit_urwid)
         self.button_bookmarks = urwid.Button(u"Favorieten", on_press=button_bookmarks_handler, user_data=self)
@@ -134,8 +133,11 @@ class Output(urwid.Padding):
 
     def set_doorkomsten_menu(self, dk: UrwidText):
         global line_filter, last_doorkomsten
+        test = get_lines_from_doorkomsten(last_doorkomsten)
         if line_filter:
             caption_text = "Druk 'f' om te filter te verwijderen. 'Enter' om te vernieuwen"
+        elif len(get_lines_from_doorkomsten(last_doorkomsten)) == 1:
+            caption_text = "Druk op 'Enter' om te vernieuwen"
         else:
             caption_text = "Druk 'f' om te filteren op lijn. 'Enter' om te vernieuwen"
 
@@ -248,8 +250,9 @@ class UserInput(urwid.Padding):
     def _process_doorkomsten(self, size: tuple, key: str) -> Optional[str]:
         """Handler for keypress in doorkomsten menu. Actions are triggered here by keypress instead of submit"""
         global state, last_doorkomsten, line_filter
-        if key == 'enter' or (key == 'f' and line_filter):  #  todo check this logic (too late in the night to test. No more busses driving...)
+        if key == 'enter' or (key == 'f' and line_filter):
             doorkomsten(output, int(last_query))
+            line_filter = None
         elif key == 'f':
             lines = get_lines_from_doorkomsten(last_doorkomsten)
             if len(lines) < 2:
@@ -271,8 +274,7 @@ class UserInput(urwid.Padding):
             haltenr = last_search['haltes'][int(edit_text) - 1]['halteNummer']
             doorkomsten(output, haltenr)
         else:
-            text = [('red', f"Ongeldige invoer")] + get_doorkomsten_text(last_search)
-            # todo what happens with the menu in case of doorkomsten exceptions? -> implement extra urwid Text object
+            text = [('red bold', f"Ongeldige invoer")] + get_halte_search_results_text(last_search, query=last_query)
             output.txt_output.set_text(text)
 
         return super(UserInput, self).original_widget.set_edit_text("")
@@ -284,10 +286,12 @@ class UserInput(urwid.Padding):
         global last_doorkomsten, line_filter
         lf = output.input_user.original_widget.edit_text
         if lf in get_lines_from_doorkomsten(last_doorkomsten):
-            # todo  -> implement extra urwid Text object to display error 'invalid input'
             line_filter = lf
             doorkomsten(output, last_doorkomsten['halteNummer'], lf)
-
+        else:
+            text = [('red bold', f"Ongeldige invoer")] + get_doorkomsten_text(last_doorkomsten)
+            output.txt_output.set_text(text)
+            pass
         return super(UserInput, self).original_widget.set_edit_text("")
 
 
@@ -388,6 +392,9 @@ def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
     """Process the doorkomsten table"""
     global last_doorkomsten, state
     data = delijnapi.api_get_doorkomsten(halte_nummer)
+    if data == 'timeout':
+        out.txt_output.set_text(('red bold', u"Couldn't reach api. Is there an internet connection?"))
+        return
     try:
         last_doorkomsten = data['halte'][0]
         if linefilter:
@@ -399,8 +406,6 @@ def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
         state = States.doorkomsten_menu
     except IndexError:
         out.txt_output.set_text(('red bold', u"Geen halte of doorkomsten rond huidig tijdstip gevonden"))
-    except TypeError:
-        out.txt_output.set_text(('red bold', u"Couldn't reach api. Is there an internet connection?"))
 
 
 def search_halte(out: Output, query: str) -> None:
@@ -429,13 +434,12 @@ class States(Enum):
 if __name__ == '__main__':
     signal(SIGINT, signal_handler)
     signal(SIGHUP, signal_handler)
-    last_query = get_last_query()
-    # todo: what to do with all these globals?
-    line_filter = None
     state = States.main
-    output = Output()
+    last_query = get_last_query()
     last_doorkomsten: dict = {}
     last_search: dict = {}
+    line_filter = None
+    output = Output()
     loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
     loop.run()
     exit(0)
