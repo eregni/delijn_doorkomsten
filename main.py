@@ -134,7 +134,7 @@ class Output(urwid.Padding):
 
     def set_doorkomsten_menu(self, dk: UrwidText):
         if self.program.line_filter:
-            caption_text = "Druk 'f' om te filter te verwijderen. 'Enter' om te vernieuwen"
+            caption_text = "Druk 'f' om de filter te verwijderen. 'Enter' om te vernieuwen"
         elif len(get_lines_from_doorkomsten(self.program.last_doorkomsten)) == 1:
             caption_text = "Druk op 'Enter' om te vernieuwen"
         else:
@@ -207,13 +207,13 @@ def signal_handler(*args) -> None:
 
 class Program:
     def __init__(self):
-        self.state = States.main
-        self.last_query = get_last_query()
+        self.state: States = States.main
+        self.last_query: str = get_last_query()
         self.last_doorkomsten: dict = {}
         self.last_search: dict = {}
-        self.line_filter = None
+        self.line_filter: str = str()
 
-    def _doorkomsten(self, out: Output, halte_nummer: int, linefilter: int = None) -> None:
+    def _doorkomsten(self, out: Output, halte_nummer: int) -> None:
         """Process the doorkomsten table"""
         data = delijnapi.api_get_doorkomsten(halte_nummer)
         if data == 'timeout':
@@ -222,7 +222,7 @@ class Program:
 
         try:
             self.last_doorkomsten = data['halte'][0]
-            if linefilter:
+            if self.line_filter:
                 self.last_doorkomsten['lijnen'] = [item for item in self.last_doorkomsten['lijnen'] if
                                                    item['lijnNummerPubliek'] == self.line_filter]
 
@@ -266,9 +266,11 @@ class Program:
             self._search_halte(output, input_text)
 
     def process_userinput_doorkomsten(self, out: Output, user_input: str):
-        if user_input == 'enter' or (user_input == 'f' and self.line_filter):  # 'enter' or 'remove filter'
-            self._doorkomsten(out, int(self.last_query), self.line_filter)
+        if user_input == 'enter':
+            self._doorkomsten(out, int(self.last_query))
+        elif user_input == 'f' and self.line_filter:
             self.line_filter = None
+            self._doorkomsten(out, int(self.last_query))
         elif user_input == 'f':
             lines = get_lines_from_doorkomsten(self.last_doorkomsten)
             if len(lines) < 2:
@@ -288,8 +290,8 @@ class Program:
 
     def process_userinput_filter(self, out: Output, input_text: str):
         if input_text in get_lines_from_doorkomsten(self.last_doorkomsten):
-            self.line_filter = int(input_text)
-            self._doorkomsten(out, self.last_doorkomsten['halteNummer'], self.line_filter)
+            self.line_filter = input_text
+            self._doorkomsten(out, self.last_doorkomsten['halteNummer'])
         else:
             text = [('red bold', f"Ongeldige invoer")] + get_doorkomsten_text(self.last_doorkomsten)
             out.txt_output.set_text(text)
@@ -324,11 +326,11 @@ class UserInput(urwid.Padding):
 
     def _process_doorkomsten(self, size: tuple, key: str) -> Optional[str]:
         """Handler for keypress in doorkomsten menu. (keypress here instead of submit)"""
-        if key not in ['f', 'enter']:
-            return super(UserInput, self).keypress(size, key)
+        if key in ['f', 'enter']:
+            self.program.process_userinput_doorkomsten(output, key)
+            return super(UserInput, self).original_widget.set_edit_text("")
 
-        self.program.process_userinput_doorkomsten(output, self.original_widget.edit_text)
-        return super(UserInput, self).original_widget.set_edit_text("")
+        return super(UserInput, self).keypress(size, key)
 
     def _process_search_halte(self, size: tuple, key: str):
         """Handler for submit in search halte menu."""
