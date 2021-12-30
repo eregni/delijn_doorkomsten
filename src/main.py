@@ -66,11 +66,14 @@ class Output(urwid.Padding):
     Packaging of the urwid objects.
     Methods control the appearance of the ui
     """
-    def __init__(self):
+
+    def __init__(self, program):
+        self.program = program
+
         self.div = urwid.Divider(div_char='-')
 
         edit = urwid.Edit("")
-        self.input_user = UserInput(edit)
+        self.input_user = UserInput(edit, program)
 
         self.txt_output = urwid.Text(u"", align='left')  # TODO change to listbox
         self.txt_info = urwid.Text(u"")
@@ -111,9 +114,8 @@ class Output(urwid.Padding):
             self.button_exit
         ])
 
-        global last_query
-        if last_query:
-            self.txt_info.set_text(f"Druk op enter om terug '{last_query}' op te zoeken")
+        if self.program.last_query:
+            self.txt_info.set_text(f"Druk op enter om terug '{self.program.last_query}' op te zoeken")
             if self.txt_info not in [w[0] for w in self.pile.contents]:
                 self.pile.widget_list.insert(0, self.txt_info)
             self.pile.focus_item = 1
@@ -132,11 +134,9 @@ class Output(urwid.Padding):
         setattr(self.pile, 'focus_position', 0)
 
     def set_doorkomsten_menu(self, dk: UrwidText):
-        global line_filter, last_doorkomsten
-        test = get_lines_from_doorkomsten(last_doorkomsten)
-        if line_filter:
+        if self.program.line_filter:
             caption_text = "Druk 'f' om te filter te verwijderen. 'Enter' om te vernieuwen"
-        elif len(get_lines_from_doorkomsten(last_doorkomsten)) == 1:
+        elif len(get_lines_from_doorkomsten(self.program.last_doorkomsten)) == 1:
             caption_text = "Druk op 'Enter' om te vernieuwen"
         else:
             caption_text = "Druk 'f' om te filteren op lijn. 'Enter' om te vernieuwen"
@@ -144,10 +144,10 @@ class Output(urwid.Padding):
         self.input_user.original_widget.set_caption(caption_text)
         self.txt_output.set_text(dk)
         buttons = [self.button_new_search, self.button_exit]
-        lines = get_lines_from_doorkomsten(last_doorkomsten)
+        lines = get_lines_from_doorkomsten(self.program.last_doorkomsten)
         if len(lines) > 1:
             buttons.insert(1, self.button_filter)
-        elif line_filter:
+        elif self.program.line_filter:
             buttons.insert(1, self.button_remove_filter)
 
         self._set_buttons(buttons)
@@ -169,30 +169,28 @@ class Output(urwid.Padding):
         ])
 
 
+# todo move handlers to program (callbacks...)
 def button_bookmarks_handler(button: urwid.Button, out: Output) -> None:
     out.txt_output.set_text(get_bookmarks())
 
 
 def button_main_menu_handler(button: urwid.Button, out: Output):
-    global state, last_search, last_query, last_doorkomsten
-    state = States.main
-    last_search.clear()
-    last_doorkomsten.clear()
+    out.program.state = States.main
+    out.program.last_search.clear()
+    out.program.last_doorkomsten.clear()
     out.set_main_menu()
 
 
 def button_filter_handler(button: urwid.Button, out: Output) -> None:
-    global last_doorkomsten, line_filter
-    line_filter = None
-    lines = get_lines_from_doorkomsten(last_doorkomsten)
+    out.program.line_filter = None
+    lines = get_lines_from_doorkomsten(out.program.last_doorkomsten)
     output.set_choose_line_filter(lines)
 
 
 def button_remove_filter_handler(button: urwid.Button, out: Output) -> None:
-    global last_doorkomsten, line_filter
-    line_filter = None
-    doorkomsten(out, last_doorkomsten['halteNummer'])
-
+    out.program.line_filter = None
+    out.program._doorkomsten(out, out.program.last_doorkomsten['halteNummer'])
+    
 
 def exit_urwid(*args):
     raise urwid.ExitMainLoop()
@@ -208,14 +206,106 @@ def signal_handler(*args) -> None:
     exit_urwid("signal")
 
 
+class Program:
+    def __init__(self):
+        self.state = States.main
+        self.last_query = get_last_query()
+        self.last_doorkomsten: dict = {}
+        self.last_search: dict = {}
+        self.line_filter = None
+
+    def _doorkomsten(self, out: Output, halte_nummer: int, linefilter: int = None) -> None:
+        """Process the doorkomsten table"""
+        data = delijnapi.api_get_doorkomsten(halte_nummer)
+        if data == 'timeout':
+            out.txt_output.set_text(('red bold', u"Couldn't reach api. Is there an internet connection?"))
+            return
+
+        try:
+            self.last_doorkomsten = data['halte'][0]
+            if linefilter:
+                self.last_doorkomsten['lijnen'] = [item for item in self.last_doorkomsten['lijnen'] if
+                                                   item['lijnNummerPubliek'] == self.line_filter]
+
+            doorkomsten_output = get_doorkomsten_text(self.last_doorkomsten)
+            out.set_doorkomsten_menu(doorkomsten_output)
+            save_query(halte_nummer)
+            self.last_query = str(halte_nummer)
+            self.state = States.doorkomsten_menu
+
+        except IndexError:
+            out.txt_output.set_text(('red bold', u"Geen halte of doorkomsten rond huidig tijdstip gevonden"))
+
+    def _search_halte(self, out: Output, query: str) -> None:
+        """Search for halte"""
+        data = delijnapi.api_search_halte(query)
+        if data is None:
+            return
+
+        if not data['haltes']:
+            out.txt_output.set_text(('red bold', "\nNiets gevonden.probeer een andere zoekterm"))
+        else:
+            search_output = get_halte_search_results_text(data, query)
+            out.set_search_halte_menu(search_output)
+            save_query(query)
+            self.last_query = str(query)
+            self.state = States.search_halte_menu
+            self.last_search = data
+
+    def process_userinput_main(self, out: Output, input_text: str):
+        if input_text == '' and self.last_query:
+            input_text = self.last_query
+
+        if input_text.isdigit():
+            nr = int(input_text)
+            if nr - 1 in range(len(BOOKMARKS)):
+                self._doorkomsten(out, BOOKMARKS[nr - 1][1])
+            else:
+                self._doorkomsten(out, nr)
+
+        else:
+            self._search_halte(output, input_text)
+
+    def process_userinput_doorkomsten(self, out: Output, user_input: str):
+        if user_input == 'enter' or (user_input == 'f' and self.line_filter):  # 'enter' or 'remove filter'
+            self._doorkomsten(out, int(self.last_query), self.line_filter)
+            self.line_filter = None
+        elif user_input == 'f':
+            lines = get_lines_from_doorkomsten(self.last_doorkomsten)
+            if len(lines) < 2:
+                return
+
+            out.set_choose_line_filter(lines)
+            self.state = States.filter_menu
+
+    def process_userinput_search_halte(self, out: Output, input_text: str):
+        if input_text.isdigit() and int(input_text) - 1 in range(len(self.last_search['haltes'])):
+            haltenr = self.last_search['haltes'][int(input_text) - 1]['halteNummer']
+            self._doorkomsten(out, haltenr)
+        else:
+            text = [('red bold', f"Ongeldige invoer")] + get_halte_search_results_text(self.last_search,
+                                                                                       self.last_query)
+            out.txt_output.set_text(text)
+
+    def process_userinput_filter(self, out: Output, input_text: str):
+        if input_text in get_lines_from_doorkomsten(self.last_doorkomsten):
+            self.line_filter = int(input_text)
+            self._doorkomsten(out, self.last_doorkomsten['halteNummer'], self.line_filter)
+        else:
+            text = [('red bold', f"Ongeldige invoer")] + get_doorkomsten_text(self.last_doorkomsten)
+            out.txt_output.set_text(text)
+
+
 class UserInput(urwid.Padding):
     """Handle user text input"""
-    def __init__(self, user_input: urwid.Edit):
+
+    def __init__(self, user_input: urwid.Edit, program: Program):
+        self.program = program
         super().__init__(user_input)
 
     def keypress(self, size: tuple, key: str) -> Optional[str]:
         """Select handler for keypress"""
-        global state
+        state = self.program.state
         if state == States.main:
             return self._process_main(size, key)
         elif state == States.doorkomsten_menu:
@@ -226,81 +316,41 @@ class UserInput(urwid.Padding):
             return self._process_filter(size, key)
 
     def _process_main(self, size: tuple, key: str) -> Optional[str]:
-        """Handler for keypress in main menu"""
+        """Handler for submit in main menu"""
         if key != 'enter':
             return super(UserInput, self).keypress(size, key)
 
-        edit_text: str = self.original_widget.edit_text
-        global last_query
-        if edit_text == '' and last_query:
-            edit_text = last_query
-
-        if edit_text.isdigit():
-            nr = int(edit_text)
-            if nr - 1 in range(len(BOOKMARKS)):
-                doorkomsten(output, BOOKMARKS[nr - 1][1])
-            else:
-                doorkomsten(output, nr)
-
-        else:
-            search_halte(output, edit_text)
-
+        self.program.process_userinput_main(output, self.original_widget.edit_text)
         return super(UserInput, self).original_widget.set_edit_text("")
 
     def _process_doorkomsten(self, size: tuple, key: str) -> Optional[str]:
-        """Handler for keypress in doorkomsten menu. Actions are triggered here by keypress instead of submit"""
-        global state, last_doorkomsten, line_filter
-        if key == 'enter' or (key == 'f' and line_filter):
-            doorkomsten(output, int(last_query))
-            line_filter = None
-        elif key == 'f':
-            lines = get_lines_from_doorkomsten(last_doorkomsten)
-            if len(lines) < 2:
-                return
-
-            output.set_choose_line_filter(lines)
-            state = States.filter_menu
-        else:
+        """Handler for keypress in doorkomsten menu. (keypress here instead of submit)"""
+        if key not in ['f', 'enter']:
             return super(UserInput, self).keypress(size, key)
 
+        self.program.process_userinput_doorkomsten(output, self.original_widget.edit_text)
+        return super(UserInput, self).original_widget.set_edit_text("")
+
     def _process_search_halte(self, size: tuple, key: str):
-        """Handler for keypress in search halte menu."""
+        """Handler for submit in search halte menu."""
         if key != 'enter':
             return super(UserInput, self).keypress(size, key)
 
-        edit_text: str = self.original_widget.edit_text
-        global last_search
-        if edit_text.isdigit() and int(edit_text) - 1 in range(len(last_search['haltes'])):
-            haltenr = last_search['haltes'][int(edit_text) - 1]['halteNummer']
-            doorkomsten(output, haltenr)
-        else:
-            text = [('red bold', f"Ongeldige invoer")] + get_halte_search_results_text(last_search, query=last_query)
-            output.txt_output.set_text(text)
-
+        self.program.process_userinput_search_halte(output, self.original_widget.edit_text)
         return super(UserInput, self).original_widget.set_edit_text("")
 
     def _process_filter(self, size: tuple, key: str):
         if key != 'enter':
             return super(UserInput, self).keypress(size, key)
 
-        global last_doorkomsten, line_filter
-        lf = output.input_user.original_widget.edit_text
-        if lf in get_lines_from_doorkomsten(last_doorkomsten):
-            line_filter = lf
-            doorkomsten(output, last_doorkomsten['halteNummer'], lf)
-        else:
-            text = [('red bold', f"Ongeldige invoer")] + get_doorkomsten_text(last_doorkomsten)
-            output.txt_output.set_text(text)
-            pass
+        self.program.process_userinput_filter(output, self.original_widget.edit_text)
         return super(UserInput, self).original_widget.set_edit_text("")
 
 
 def save_query(query_input: [str, int]) -> None:
     """Put search query in a text file"""
-    global last_query
-    last_query = str(query_input)
     with open(QUERY_LOG, "w") as file:
-        file.write(str(last_query))
+        file.write(str(query_input))
 
 
 def get_last_query() -> str:
@@ -388,42 +438,6 @@ def get_bookmarks() -> UrwidText:
     return [('lightcyan bold', "Favorieten\n"), ('lightcyan', bookmark_text)]
 
 
-def doorkomsten(out: Output, halte_nummer: int, linefilter: int = None) -> None:
-    """Process the doorkomsten table"""
-    global last_doorkomsten, state
-    data = delijnapi.api_get_doorkomsten(halte_nummer)
-    if data == 'timeout':
-        out.txt_output.set_text(('red bold', u"Couldn't reach api. Is there an internet connection?"))
-        return
-    try:
-        last_doorkomsten = data['halte'][0]
-        if linefilter:
-            last_doorkomsten['lijnen'] = [item for item in last_doorkomsten['lijnen'] if item['lijnNummerPubliek'] == linefilter]
-
-        doorkomsten_output = get_doorkomsten_text(last_doorkomsten)
-        out.set_doorkomsten_menu(doorkomsten_output)
-        save_query(halte_nummer)
-        state = States.doorkomsten_menu
-    except IndexError:
-        out.txt_output.set_text(('red bold', u"Geen halte of doorkomsten rond huidig tijdstip gevonden"))
-
-
-def search_halte(out: Output, query: str) -> None:
-    """Search for halte"""
-    data = delijnapi.api_search_halte(query)
-    if data is None:
-        return
-    if not data['haltes']:
-        out.txt_output.set_text(('red bold', "\nNiets gevonden.probeer een andere zoekterm"))
-    else:
-        search_output = get_halte_search_results_text(data, query)
-        out.set_search_halte_menu(search_output)
-        save_query(query)
-        global state, last_search
-        state = States.search_halte_menu
-        last_search = data
-
-
 class States(Enum):
     main = 0
     doorkomsten_menu = 1
@@ -434,12 +448,10 @@ class States(Enum):
 if __name__ == '__main__':
     signal(SIGINT, signal_handler)
     signal(SIGHUP, signal_handler)
-    state = States.main
-    last_query = get_last_query()
-    last_doorkomsten: dict = {}
-    last_search: dict = {}
-    line_filter = None
-    output = Output()
+
+    prog = Program()
+    output = Output(prog)  # todo output is still being used as global in UserInput
     loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
     loop.run()
+
     exit(0)
