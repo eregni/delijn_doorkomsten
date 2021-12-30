@@ -9,5 +9,5 @@ Terminal program to show realtime info from De lijn. I wrote this thing because 
 *   Filter search results by line nr
 
 ### Usage:
-Run: python main.py  
+Run: doorkomsten.sh  
 Run on android: use termux on android -> https://termux.com/

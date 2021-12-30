@@ -41,7 +41,6 @@ Script flow:
             User input: line nr to filter -> Doorkomsten menu with filtered doorkomsten
 
 # todo parse info about delays/disruptions/detours
-# todo packaging
 """
 from enum import Enum
 from signal import signal, SIGINT, SIGHUP
@@ -169,7 +168,7 @@ class Output(urwid.Padding):
         ])
 
 
-# todo move handlers to program (callbacks...)
+# todo move handlers to Program (callbacks...)
 def button_bookmarks_handler(button: urwid.Button, out: Output) -> None:
     out.txt_output.set_text(get_bookmarks())
 
@@ -190,7 +189,7 @@ def button_filter_handler(button: urwid.Button, out: Output) -> None:
 def button_remove_filter_handler(button: urwid.Button, out: Output) -> None:
     out.program.line_filter = None
     out.program._doorkomsten(out, out.program.last_doorkomsten['halteNummer'])
-    
+
 
 def exit_urwid(*args):
     raise urwid.ExitMainLoop()
@@ -445,13 +444,12 @@ class States(Enum):
     filter_menu = 3
 
 
-if __name__ == '__main__':
-    signal(SIGINT, signal_handler)
-    signal(SIGHUP, signal_handler)
+signal(SIGINT, signal_handler)
+signal(SIGHUP, signal_handler)
 
-    prog = Program()
-    output = Output(prog)  # todo output is still being used as global in UserInput
-    loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
-    loop.run()
+prog = Program()
+output = Output(prog)  # todo output is still being used as global in UserInput
+loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
+loop.run()
 
-    exit(0)
+exit(0)

@@ -1,4 +1,4 @@
-"""List with favorite stops"""
+"""Dict with favorite stops"""
 BOOKMARKS = {
     "sint-katelijne": 102700,
     "metro groenplaats -> station": 103756,
