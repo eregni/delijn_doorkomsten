@@ -82,9 +82,9 @@ class Output(urwid.Padding):
 
         self.button_exit = urwid.Button("Afsluiten", on_press=exit_urwid)
         self.button_bookmarks = urwid.Button("Favorieten", on_press=button_bookmarks_handler, user_data=self)
-        self.button_new_search = urwid.Button("Nieuwe zoekopdracht", on_press=button_main_menu_handler, user_data=self)
+        self.button_new_search = urwid.Button("Home", on_press=button_main_menu_handler, user_data=self)
         self.button_filter = urwid.Button("Filteren", on_press=button_filter_handler, user_data=self)
-        self.button_remove_filter = urwid.Button("Filter verwijderen", on_press=button_remove_filter_handler,
+        self.button_remove_filter = urwid.Button("Verwijder filter", on_press=button_remove_filter_handler,
                                                  user_data=self)
         self.buttons = urwid.Columns([self.button_exit], dividechars=1, box_columns=[self.button_exit])
 
@@ -158,8 +158,10 @@ class Output(urwid.Padding):
 
     def set_choose_line_filter_menu(self, lines: list[str]):
         self.input_user.original_widget.set_caption(f"Kies lijn nummer ({', '.join(lines)}): ")
-        buttons = [self.button_new_search, self.button_exit]
-        self._set_buttons(buttons)
+        self._set_buttons([
+            self.button_new_search,
+            self.button_exit
+        ])
         setattr(self.pile, 'focus_position', 0)
 
     def set_filtered_doorkomsten_menu(self, doorkomsten: UrwidText):
@@ -385,9 +387,9 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
         delay_text = None
 
         if "CANCELLED" in item['predictionStatussen'] or "DELETED" in item['predictionStatussen']:
-            realtime_text = "Rijdt niet"
+            realtime_text = ('red', f'{"Rijdt niet":<7}')
         elif "REALTIME" in item['predictionStatussen']:
-            realtime_text = item['vertrekTijd']
+            realtime_text = (text_color, f"{item['vertrekTijd']:<7}")
             try:
                 vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
                 vertrektijd_text = vertrektijd.strftime('%H:%M')
@@ -401,14 +403,15 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
             except TypeError:
                 pass  # 'vertrekRealtimeTijdstip' = None (Sometimes, the api doesn't return the calculated ETA)
         else:
-            realtime_text = "GN RT"
+            realtime_text = (text_color, f'{"GN RT":<7}')
             vertrektijd_text = vertrektijd.strftime('%H:%M')
 
         icon = ICON.get(item['lijnType'], "")
-        line = [(text_color,
-                 f"{icon} {item['lijnType']:<5}{item['lijnNummerPubliek']:<4}{item['bestemming']:<20}{realtime_text:<7}"
-                 f"{vertrektijd_text:<7}"),
-                '\n' if delay_text is None else delay_text]
+        line = [
+            (text_color, f"{icon} {item['lijnType']:<5}{item['lijnNummerPubliek']:<4}{item['bestemming']:<20}"),
+            realtime_text,
+            (text_color, f"{vertrektijd_text:<7}"),
+            '\n' if delay_text is None else delay_text]
 
         text.extend(line)
         text_color = 'yellow' if text_color == 'green' else 'green'
