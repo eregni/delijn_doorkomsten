@@ -59,6 +59,7 @@ import bookmarks
 QUERY_LOG = "search.txt"
 BOOKMARKS = list(bookmarks.BOOKMARKS.items())
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
+DOORKOMSTEN_REFRESH = 60
 
 UrwidText = list[tuple[str, str]]
 
@@ -171,6 +172,12 @@ class Output(urwid.Padding):
             self.button_remove_filter,
             self.button_exit
         ])
+
+
+def doorkomsten_alarm_handler(_loop: urwid.MainLoop, output: Output):
+    if output.program.state == States.DOORKOMSTEN_MENU:
+        output.input_user.keypress((), 'enter')
+    _loop.set_alarm_in(DOORKOMSTEN_REFRESH, doorkomsten_alarm_handler, user_data=output)
 
 
 def button_bookmarks_handler(button: urwid.Button, out: Output) -> None:
@@ -459,4 +466,5 @@ signal(SIGHUP, signal_handler)
 prog = Program()
 output = Output(prog)
 loop = urwid.MainLoop(output.original_widget, unhandled_input=unhandled_input_handler, palette=PALETTE)
+loop.set_alarm_in(DOORKOMSTEN_REFRESH, doorkomsten_alarm_handler, user_data=output)
 loop.run()
