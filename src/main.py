@@ -54,10 +54,9 @@ import urwid
 
 import delijnapi
 from tui import PALETTE, ICON
-import bookmarks
+from bookmarks import BOOKMARKS
 
 QUERY_LOG = "search.txt"
-BOOKMARKS = list(bookmarks.BOOKMARKS.items())
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
 DOORKOMSTEN_REFRESH = 60
 
@@ -231,11 +230,15 @@ class Program:
             out.txt_output.set_text(('red bold', "Couldn't reach api. Is there an internet connection?"))
             return
 
+        if isinstance(data, str):
+            out.txt_output.set_text(('red bold', data))
+            return
+
         try:
-            self.last_doorkomsten = data['halte'][0]
+            self.last_doorkomsten = data['halteDoorkomsten'][0]
             if self.line_filter:
-                self.last_doorkomsten['lijnen'] = [item for item in self.last_doorkomsten['lijnen'] if
-                                                   item['lijnNummerPubliek'] == self.line_filter]
+                self.last_doorkomsten['doorkomsten'] = [item for item in self.last_doorkomsten['doorkomsten'] if
+                                                   item['lijnnummer'] == self.line_filter]
 
             doorkomsten_output = get_doorkomsten_text(self.last_doorkomsten)
             out.set_doorkomsten_menu(doorkomsten_output)
@@ -251,9 +254,10 @@ class Program:
         data = delijnapi.api_search_halte(query)
         if data is None:
             return
-
-        if not data['haltes']:
-            out.txt_output.set_text(('red bold', "\nNiets gevonden.probeer een andere zoekterm"))
+        elif 'statusCode' in data and data['statusCode'] == 401:  # Incorrect or missing api key...
+            out.txt_output.set_text(('red_bold', f"\n{data['message']}"))
+        elif data['aantalHits'] == 0:
+            out.txt_output.set_text(('red bold', "\nNiets gevonden. Probeer een andere zoekterm"))
         else:
             search_output = get_halte_search_results_text(data, query)
             out.set_search_halte_menu(search_output)
@@ -269,7 +273,7 @@ class Program:
         if input_text.isdigit():
             halte_nr = int(input_text)
             if halte_nr - 1 in range(len(BOOKMARKS)):
-                self.doorkomsten(out, BOOKMARKS[halte_nr - 1][1])
+                self.doorkomsten(out, BOOKMARKS[halte_nr - 1].halte_nummer)
             else:
                 self.doorkomsten(out, halte_nr)
 
@@ -385,11 +389,12 @@ def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
 
 def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
     """Fetch text with urwid markup, parsed from api_get_doorkomsten result"""
+    # todo CONTINE HERE -> get halteinfo from api
     text = [('lightcyan', f"\n{doorkomsten['omschrijvingLang']} - haltenr: {doorkomsten['halteNummer']}\n")]
     text_color = 'green'
 
-    for item in doorkomsten['lijnen']:
-        vertrektijd = datetime.fromtimestamp(item['vertrekTheoretischeTijdstip'] / 1000)
+    for item in doorkomsten['lijnnummer']:
+        vertrektijd = datetime.fromtimestamp(item['dienstregelingTijdstip'])
         vertrektijd_text = ""
         delay_text = None
 
@@ -398,7 +403,7 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
         elif "REALTIME" in item['predictionStatussen']:
             realtime_text = (text_color, f"{item['vertrekTijd']:<7}")
             try:
-                vertrektijd_rt = datetime.fromtimestamp(item['vertrekRealtimeTijdstip'] / 1000)
+                vertrektijd_rt = datetime.fromtimestamp(item['real-timeTijdstip'])
                 vertrektijd_text = vertrektijd.strftime('%H:%M')
                 if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
                     delay = vertrektijd_rt - vertrektijd
@@ -431,12 +436,15 @@ def get_halte_search_results_text(results: dict, query: str) -> UrwidText:
     haltes = results['haltes']
     text = [('lightcyan', f"\n\"{query}\": {len(results['haltes'])} resultaten\n")]
     text_color = 'green'
-
+    halte_list = tuple((str(halte['entiteitnummer']), str(halte['haltenummer'])) for halte in haltes)
+    lijnen_bij_haltes = delijnapi.api_get_list_lijn_richtingen(halte_list)
+    # TODO CONTINUE HERE -> FETCH DATA from api call
     for index, halte in enumerate(haltes):
-        lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte['lijnen']])
-        bestemmingen = ", ".join(halte['bestemmingen'])
-        text.append((text_color, f"{index + 1}) {halte['omschrijvingLang']} - haltenr: "f"{halte['halteNummer']} - "
-                                 f"Lijnen: {lijn_nummers} Richting: {bestemmingen}\n"))
+        #lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in lijnen_bij_haltes['lijnen']]) # todo get lijnNrs for each halte
+        # bestemmingen = ", ".join(halte['bestemmingen']) # todo get bestemming for each halte
+        text.append((text_color, f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - "
+                                # f"Lijnen: {lijn_nummers} Richting: {bestemmingen}
+                                 f"\n"))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
     return text
@@ -444,11 +452,11 @@ def get_halte_search_results_text(results: dict, query: str) -> UrwidText:
 
 def get_bookmarks() -> UrwidText:
     """Give text with urwid markup from bookmark list"""
-    stop_length = max([len(stop) for stop, _ in BOOKMARKS])
+    bookmark_length = max([len(halte.bookmark_name) for halte in BOOKMARKS])
     bookmark_text = ""
-    for index, (stop, halte_nr) in enumerate(BOOKMARKS):
+    for index, halte in enumerate(BOOKMARKS):
         index_text = f"{index + 1})"
-        bookmark_text += f" {index_text:<4}{stop:<{stop_length}} ({halte_nr})\n"
+        bookmark_text += f" {index_text:<4}{halte.bookmark_name:<{bookmark_length}} ({halte.halte_nummer})\n"
 
     return [('lightcyan bold', "Favorieten\n"), ('lightcyan', bookmark_text)]
 
