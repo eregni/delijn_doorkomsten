@@ -49,12 +49,13 @@ from enum import Enum
 from signal import signal, SIGINT, SIGHUP
 from datetime import datetime, timedelta
 from typing import Optional
-
 import urwid
 
 import delijnapi
 from tui import PALETTE, ICON
 from bookmarks import BOOKMARKS
+from models import HaltesHits, Halte, Link, GeoCoordinaat
+
 
 QUERY_LOG = "search.txt"
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
@@ -251,12 +252,13 @@ class Program:
 
     def search_halte(self, out: Output, query: str) -> None:
         """Process halte search"""
-        data = delijnapi.api_search_halte(query)
-        if data is None:
+        try:
+            data = delijnapi.zoek_haltes(query)
+        except delijnapi.DelijnApiError as err:
+            out.txt_output.set_text(('red bold', f"\n{err.message}"))
             return
-        elif 'statusCode' in data and data['statusCode'] == 401:  # Incorrect or missing api key...
-            out.txt_output.set_text(('red_bold', f"\n{data['message']}"))
-        elif data['aantalHits'] == 0:
+
+        if data.aantalHits == 0:
             out.txt_output.set_text(('red bold', "\nNiets gevonden. Probeer een andere zoekterm"))
         else:
             search_output = get_halte_search_results_text(data, query)
@@ -431,17 +433,16 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
     return text
 
 
-def get_halte_search_results_text(results: dict, query: str) -> UrwidText:
+def get_halte_search_results_text(searchResults: HaltesHits, query: str) -> UrwidText:
     """Fetch text with urwid markup, parsed from 'api_search_halte' result"""
-    haltes = results['haltes']
-    text = [('lightcyan', f"\n\"{query}\": {len(results['haltes'])} resultaten\n")]
+    text = [('lightcyan', f"\n\"{query}\": {searchResults.aantalHits} resultaten\n")]
     text_color = 'green'
-    halte_list = tuple((str(halte['entiteitnummer']), str(halte['haltenummer'])) for halte in haltes)
+    halte_list = '_'.join([f"{halte.entiteitnummer}_{halte.haltenummer}" for halte in searchResults.haltes])
     lijnen_bij_haltes = delijnapi.api_get_list_lijn_richtingen(halte_list)
     # TODO CONTINUE HERE -> FETCH DATA from api call
     for index, halte in enumerate(haltes):
-        #lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in lijnen_bij_haltes['lijnen']]) # todo get lijnNrs for each halte
-        # bestemmingen = ", ".join(halte['bestemmingen']) # todo get bestemming for each halte
+        lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in lijnen_bij_haltes['lijnen']]) # todo get lijnNrs for each halte
+        bestemmingen = ", ".join(halte['bestemmingen']) # todo get bestemming for each halte
         text.append((text_color, f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - "
                                 # f"Lijnen: {lijn_nummers} Richting: {bestemmingen}
                                  f"\n"))

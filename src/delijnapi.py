@@ -2,27 +2,46 @@
 Collection of api calls
 docs: https://data.delijn.be/docs/services/
 """
-from typing import Union
+from enum import Enum
 import requests
+from requests import Response
+from models import HaltesHits, Halte, Link, GeoCoordinaat, Lijnrichtingen
 
-API_CORE = 'https://api.delijn.be/DLKernOpenData/api/v1'
-API_SEARCH = 'https://api.delijn.be/DLZoekOpenData/v1'
-API_USER = 'eregni'
-API_KEY = '2219b59ff6d84b5a9a4bc5e971b36436'  # TODO remove api key!!!
-API_KEY2 = 'f66c83682a6a418884fcb4fb8a43e5f4'
-TIMEOUT = 5
+TIMEOUT = 5  # timeout in seconds
 
 
-def _call_api(url: str) -> Union[dict, str]:
-    """Call Api"""
-    headers = {'Ocp-Apim-Subscription-Key': API_KEY}
-    try:
-        result = requests.get(f"{url}", headers=headers, timeout=TIMEOUT)
-        return result.json()
-    except requests.ConnectionError:
-        return 'timeout'
-    except ValueError:
-        pass  # silence json decode exceptions
+class Endpoints(Enum):
+    DL_CORE = 'https://api.delijn.be/DLKernOpenData/api/v1'
+    DL_SEARCH = 'https://api.delijn.be/DLZoekOpenData/v1'
+
+try:
+    with open('api_key.txt', 'r') as f:
+        API_KEY = f.readline()
+except FileNotFoundError:
+    pass  # TODO handle exception
+
+
+def zoek_haltes(zoek_argument: str, huidige_positie: str = None, start_index: int = 0, max_aantal_hits: int = 10) -> HaltesHits:
+    params = {'huidigePositie': huidige_positie, "startIndex": start_index, 'maxAantalHits': max_aantal_hits}
+    path = f"/zoek/haltes/{zoek_argument}"
+    result = _call_api(path, Endpoints.DL_SEARCH, params)
+    return result.json(object_hook=HaltesHits)
+
+
+def api_get_list_lijn_richtingen(haltesleutels: str) -> Response:
+    path = f"/haltes/lijst/{haltesleutels}/lijnrichtingen"
+    result = _call_api(path, Endpoints.DL_CORE)
+    return result.json(object_hook=Lijnrichtingen)
+
+
+
+
+
+
+
+
+# old api
+
 
 
 def api_get_doorkomsten(halte: int, num_results: int = 10) -> [dict, str]:
@@ -35,16 +54,29 @@ def api_get_doorkomsten(halte: int, num_results: int = 10) -> [dict, str]:
     url = f"{API_CORE}/haltes/{entiteit}/{halte}/real-time?maxAantalDoorkomsten=10"
     return _call_api(url)
 
-
-def api_get_list_lijn_richtingen(haltes: tuple[tuple[str, str]]) -> dict:
-    halte_sleutels = '_'.join(tuple(f'{halte[0]}_{halte[1]}' for halte in haltes))
-    url = f"{API_CORE}/haltes/lijst/{halte_sleutels}/lijnrichtingen"
-    return _call_api(url)
+# end old api
 
 
-def api_search_halte(query: [str, int]) -> dict:
-    """Api call. Search for halte by name"""
-    # TODO search by fetched gps coordinates
-    url = f"{API_SEARCH}/zoek/haltes/{query}?maxAantalHits=10"
-    return _call_api(url)
+def _call_api(path: str, endpoint: Endpoints, params: dict = None) -> Response:
+    """Call Api"""
+    headers = {'Ocp-Apim-Subscription-Key': API_KEY}
+    try:
+        result = requests.get(f"{endpoint.value}{path}", params=params, headers=headers, timeout=TIMEOUT)
+        if result.status_code != 200:
+            raise DelijnApiError(result)
+
+        return result
+
+    except requests.ConnectionError:
+        raise DelijnApiError("Timeout. Is there an internet connection?")
+
+
+class DelijnApiError(Exception):
+    def __init__(self, response: [Response, str]):
+        if isinstance(response, Response):
+            parsed = response.json()
+            self.message = f"server response {parsed['statusCode']}: {parsed['message']}"
+        else:
+            self.message = response
+        super().__init__(self.message)
 
