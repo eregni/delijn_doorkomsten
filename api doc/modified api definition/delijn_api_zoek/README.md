@@ -130,7 +130,7 @@ Class | Method | HTTP request | Description
 ## apiKeyQuery
 
 - **Type**: API key
-- **API key parameter name**: subscription-key
+- **API key parameter name**: Ocp-Apim-Subscription-Key
 - **Location**: URL query string
 
 

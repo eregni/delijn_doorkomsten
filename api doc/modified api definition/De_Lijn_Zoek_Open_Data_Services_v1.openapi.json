@@ -532,7 +532,7 @@
       },
       "apiKeyQuery": {
         "type": "apiKey",
-        "name": "subscription-key",
+        "name": "Ocp-Apim-Subscription-Key",
         "in": "query"
       }
     }

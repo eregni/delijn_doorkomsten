@@ -402,7 +402,7 @@ conf = delijn_api_zoek.Configuration(
             auth['apiKeyQuery'] = {
                 'type': 'api_key',
                 'in': 'query',
-                'key': 'subscription-key',
+                'key': 'Ocp-Apim-Subscription-Key',
                 'value': self.get_api_key_with_prefix(
                     'apiKeyQuery',
                 ),

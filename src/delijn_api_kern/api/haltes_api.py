@@ -1304,8 +1304,8 @@ class HaltesApi(object):
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async_req=True
 
-        >>> thread = api.geef_halte_lijnrichtingen_lijst(haltesleutels, async_req=True)
-        >>> result = thread.get()
+        #>>> thread = api.geef_halte_lijnrichtingen_lijst(haltesleutels, async_req=True)
+        #>>> result = thread.get()
 
         Args:
             haltesleutels (str): lijst van halte sleutels (bv 1_201302_5_5024541)

@@ -51,11 +51,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 import urwid
 
-import delijnapi
+import exceptions
+from delijn_api_kern.model.halte import Halte
+from delijn_api_kern.model.lijnrichtingen import Lijnrichtingen
+from delijn_api_zoek.model.haltes_hits import HaltesHits
 from tui import PALETTE, ICON
 from bookmarks import BOOKMARKS
-from models import HaltesHits, Halte, Link, GeoCoordinaat
-
+import delijn_repository
 
 QUERY_LOG = "search.txt"
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
@@ -224,9 +226,9 @@ class Program:
         self.last_search: dict = {}
         self.line_filter: str = str()
 
-    def doorkomsten(self, out: Output, halte_nummer: int) -> None:
+    def doorkomsten(self, out: Output, halte_nummer: str) -> None:
         """Process doorkomsten"""
-        data = delijnapi.api_get_doorkomsten(halte_nummer)
+        data = delijn_repository.zoek_halte(halte_nummer)
         if data == 'timeout':
             out.txt_output.set_text(('red bold', "Couldn't reach api. Is there an internet connection?"))
             return
@@ -253,12 +255,12 @@ class Program:
     def search_halte(self, out: Output, query: str) -> None:
         """Process halte search"""
         try:
-            data = delijnapi.zoek_haltes(query)
-        except delijnapi.DelijnApiError as err:
-            out.txt_output.set_text(('red bold', f"\n{err.message}"))
+            data = delijn_repository.zoek_halte(query)
+        except exceptions.DelijnApiError as ex:
+            out.txt_output.set_text(('red bold', f"\n{ex.exception}"))
             return
 
-        if data.aantalHits == 0:
+        if data.aantal_hits == 0:
             out.txt_output.set_text(('red bold', "\nNiets gevonden. Probeer een andere zoekterm"))
         else:
             search_output = get_halte_search_results_text(data, query)
@@ -391,7 +393,6 @@ def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
 
 def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
     """Fetch text with urwid markup, parsed from api_get_doorkomsten result"""
-    # todo CONTINE HERE -> get halteinfo from api
     text = [('lightcyan', f"\n{doorkomsten['omschrijvingLang']} - haltenr: {doorkomsten['halteNummer']}\n")]
     text_color = 'green'
 
@@ -433,16 +434,17 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
     return text
 
 
-def get_halte_search_results_text(searchResults: HaltesHits, query: str) -> UrwidText:
+def get_halte_search_results_text(search_results: HaltesHits, query: str) -> UrwidText:
     """Fetch text with urwid markup, parsed from 'api_search_halte' result"""
-    text = [('lightcyan', f"\n\"{query}\": {searchResults.aantalHits} resultaten\n")]
+    text = [('lightcyan', f"\n\"{query}\": {search_results.aantal_hits} resultaten\n")]
     text_color = 'green'
-    halte_list = '_'.join([f"{halte.entiteitnummer}_{halte.haltenummer}" for halte in searchResults.haltes])
-    lijnen_bij_haltes = delijnapi.api_get_list_lijn_richtingen(halte_list)
-    # TODO CONTINUE HERE -> FETCH DATA from api call
-    for index, halte in enumerate(haltes):
-        lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in lijnen_bij_haltes['lijnen']]) # todo get lijnNrs for each halte
-        bestemmingen = ", ".join(halte['bestemmingen']) # todo get bestemming for each halte
+    halte_list = '_'.join([f"{halte.entiteitnummer}_{halte.haltenummer}" for halte in search_results.haltes])
+    lijnen_bij_haltes: Lijnrichtingen = delijn_repository.get_lines_for_haltes(halte_list)  # TODO CONTINUE HERE
+    for lijn in lijnen_bij_haltes.get('default'):
+        print(lijn.entiteitnummer)
+    for index, halte in enumerate(lijnen_bij_haltes):
+        # lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte.])
+        bestemmingen = ", ".join(halte['bestemmingen']
         text.append((text_color, f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - "
                                 # f"Lijnen: {lijn_nummers} Richting: {bestemmingen}
                                  f"\n"))
