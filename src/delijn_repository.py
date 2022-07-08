@@ -43,7 +43,7 @@ def zoek_halte(zoek_argument: str, huidige_positie: str = None, start_index: int
         return result
 
 
-# todo CONTINUE here: api definition is invalid again (and again...). Time to reverse engineer it..
+# todo CONTINUE here: api definition is invalid again (and again...). Time to reverse engineer it...
 def geef_halte(halte_nr: int, entiteit_nr: int):
     """Get halte by haltenummer"""
     with KernApiClient(configuration=DELIJN_KERN_CONFIG) as api_client:
