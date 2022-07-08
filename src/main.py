@@ -52,9 +52,12 @@ from typing import Optional
 import urwid
 
 import exceptions
-from delijn_api_kern.model.halte import Halte
+
 from delijn_api_kern.model.lijnrichtingen import Lijnrichtingen
+from delijn_api_kern.model.ritten import Ritten
 from delijn_api_zoek.model.haltes_hits import HaltesHits
+from delijn_api_kern.model.halte import Halte
+
 from tui import PALETTE, ICON
 from bookmarks import BOOKMARKS
 import delijn_repository
@@ -224,26 +227,29 @@ class Program:
         self.last_query: str = get_last_query()
         self.last_doorkomsten: dict = {}
         self.last_search: dict = {}
-        self.line_filter: str = str()
+        self.line_filter: str = ''
 
-    def doorkomsten(self, out: Output, halte_nummer: str) -> None:
+    def doorkomsten(self, out: Output, halte_nummer: int, entiteitnummmer: int = None) -> None:
         """Process doorkomsten"""
-        data = delijn_repository.zoek_halte(halte_nummer)
-        if data == 'timeout':
-            out.txt_output.set_text(('red bold', "Couldn't reach api. Is there an internet connection?"))
-            return
+        try:
+            if not entiteitnummmer:
+                # so far, im assuming there are nu duplicate haltenummers
+                entiteitnummmer = delijn_repository.zoek_halte(str(halte_nummer)).haltes[0]['entiteitnummer']
 
-        if isinstance(data, str):
-            out.txt_output.set_text(('red bold', data))
+            halte = delijn_repository.geef_halte(halte_nummer, entiteitnummmer)
+            data = delijn_repository.get_doorkomsten_for_halte(int(halte['haltenummer']), int(halte['entiteitnummer']))
+        except exceptions.DelijnApiError as ex:
+            out.txt_output.set_text(('red bold', f"{ex.exception}"))
             return
+            # todo exceptions...
 
         try:
             self.last_doorkomsten = data['halteDoorkomsten'][0]
             if self.line_filter:
                 self.last_doorkomsten['doorkomsten'] = [item for item in self.last_doorkomsten['doorkomsten'] if
-                                                   item['lijnnummer'] == self.line_filter]
+                                                        item['lijnnummer'] == int(self.line_filter)]
 
-            doorkomsten_output = get_doorkomsten_text(self.last_doorkomsten)
+            doorkomsten_output = get_doorkomsten_text(halte, self.last_doorkomsten)
             out.set_doorkomsten_menu(doorkomsten_output)
             save_query(halte_nummer)
             self.last_query = str(halte_nummer)
@@ -277,7 +283,9 @@ class Program:
         if input_text.isdigit():
             halte_nr = int(input_text)
             if halte_nr - 1 in range(len(BOOKMARKS)):
-                self.doorkomsten(out, BOOKMARKS[halte_nr - 1].halte_nummer)
+                bookmark = BOOKMARKS[halte_nr - 1]
+                self.doorkomsten(out, bookmark.halte_nummer, bookmark.entiteit)
+                save_query(halte_nr - 1)
             else:
                 self.doorkomsten(out, halte_nr)
 
@@ -391,22 +399,23 @@ def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
     return lines
 
 
-def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
+# mixed stuff in parameters. Yuk. I need a proper api definition! :)
+def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> UrwidText:
     """Fetch text with urwid markup, parsed from api_get_doorkomsten result"""
-    text = [('lightcyan', f"\n{doorkomsten['omschrijvingLang']} - haltenr: {doorkomsten['halteNummer']}\n")]
+    text = [('lightcyan', f"\n{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}\n")]
     text_color = 'green'
 
-    for item in doorkomsten['lijnnummer']:
-        vertrektijd = datetime.fromtimestamp(item['dienstregelingTijdstip'])
+    for doorkomst in doorkomsten['doorkomsten']:
+        vertrektijd = datetime.fromisoformat(doorkomst['dienstregelingTijdstip'])
         vertrektijd_text = ""
         delay_text = None
 
-        if "CANCELLED" in item['predictionStatussen'] or "DELETED" in item['predictionStatussen']:
+        if "CANCELLED" in doorkomst['predictionStatussen'] or "DELETED" in doorkomst['predictionStatussen']:
             realtime_text = ('red', f'{"Rijdt niet":<7}')
-        elif "REALTIME" in item['predictionStatussen']:
-            realtime_text = (text_color, f"{item['vertrekTijd']:<7}")
+        elif "REALTIME" in doorkomst['predictionStatussen']:
+            realtime_text = (text_color, f"{doorkomst['vertrekTijd']:<7}")
             try:
-                vertrektijd_rt = datetime.fromtimestamp(item['real-timeTijdstip'])
+                vertrektijd_rt = datetime.fromisoformat(doorkomst['real-timeTijdstip'])
                 vertrektijd_text = vertrektijd.strftime('%H:%M')
                 if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
                     delay = vertrektijd_rt - vertrektijd
@@ -421,9 +430,9 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
             realtime_text = (text_color, f'{"GN RT":<7}')
             vertrektijd_text = vertrektijd.strftime('%H:%M')
 
-        icon = ICON.get(item['lijnType'], "")
+        icon = ICON.get(doorkomst['lijnType'], "")
         line = [
-            (text_color, f"{icon} {item['lijnType']:<5}{item['lijnNummerPubliek']:<4}{item['bestemming']:<20}"),
+            (text_color, f"{icon} {doorkomst['lijnType']:<5}{doorkomst['lijnNummerPubliek']:<4}{doorkomst['bestemming']:<20}"),
             realtime_text,
             (text_color, f"{vertrektijd_text:<7}"),
             '\n' if delay_text is None else delay_text]
@@ -436,17 +445,18 @@ def get_doorkomsten_text(doorkomsten: dict) -> UrwidText:
 
 def get_halte_search_results_text(search_results: HaltesHits, query: str) -> UrwidText:
     """Fetch text with urwid markup, parsed from 'api_search_halte' result"""
+    raise NotImplementedError
     text = [('lightcyan', f"\n\"{query}\": {search_results.aantal_hits} resultaten\n")]
     text_color = 'green'
     halte_list = '_'.join([f"{halte.entiteitnummer}_{halte.haltenummer}" for halte in search_results.haltes])
-    lijnen_bij_haltes: Lijnrichtingen = delijn_repository.get_lines_for_haltes(halte_list)  # TODO CONTINUE HERE
+    lijnen_bij_haltes: Lijnrichtingen = delijn_repository.get_lijnen_for_haltes(halte_list)  # TODO CONTINUE HERE
     for lijn in lijnen_bij_haltes.get('default'):
         print(lijn.entiteitnummer)
     for index, halte in enumerate(lijnen_bij_haltes):
         # lijn_nummers = ", ".join([lijn['lijnNummerPubliek'] for lijn in halte.])
-        bestemmingen = ", ".join(halte['bestemmingen']
+        bestemmingen = ", ".join(halte['bestemmingen'])
         text.append((text_color, f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - "
-                                # f"Lijnen: {lijn_nummers} Richting: {bestemmingen}
+        # f"Lijnen: {lijn_nummers} Richting: {bestemmingen}
                                  f"\n"))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
