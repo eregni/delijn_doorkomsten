@@ -41,6 +41,7 @@ Script flow:
             User input: line nr to filter -> Doorkomsten menu with filtered doorkomsten
 
 # TODO parse info about delays/disruptions/detours
+# TODO unicode waiting animation
 """
 # Postpone evaluation for type annonations https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
@@ -253,7 +254,7 @@ class Program:
         self.last_query: str = get_last_query()
         self.last_doorkomsten: dict = {}
         self.last_search: dict = {}
-        self.line_filter: str = ''
+        self.line_filter: str = ""
 
     def process_doorkomsten(self, out: Output, halte_nummer: int, entiteitnummmer: int = None) -> None:
         """Process doorkomsten"""
@@ -339,7 +340,7 @@ class Program:
     def process_userinput_filter(self, out: Output, input_text: str):
         if input_text in get_lines_from_doorkomsten(self.last_doorkomsten):
             self.line_filter = input_text
-            self.process_doorkomsten(out, self.last_doorkomsten['halteNummer'])
+            self.process_doorkomsten(out, self.last_doorkomsten['haltenummer'])
         else:
             out.set_error_message(f"Ongeldige invoer: \"{input_text}\"")
 
@@ -414,14 +415,9 @@ def get_last_query() -> str:
 def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
     """Give a list containing the line nrs from the doorkomsten data returned by delijn api"""
     lines = [line['lijnnummer'] for line in doorkomsten['doorkomsten']]
+    lines = list(dict.fromkeys(lines))
     lines.sort()
-    return lines
-
-# moved to service
-# def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> urwid.Text:
-
-# moved to service
-# def get_halte_search_results_text(haltes_search_results: dict, query: str) -> urwid.Text:
+    return list(map(str, lines))
 
 
 def get_bookmarks() -> list[urwid.Text]:

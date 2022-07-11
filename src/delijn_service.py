@@ -1,4 +1,4 @@
-"""Functions for interacting with De Lijn api's"""
+"""Functions for interacting with De Lijn api's and make urwid.Text objects"""
 import urwid
 
 import delijn_repository
@@ -14,24 +14,26 @@ def search_halte(search_term: str) -> dict:
 
 def get_halte_search_results_text(haltes_search_result: dict, query: str) -> list[urwid.Text]:
     """Fetch text with urwid markup, parsed from 'api_search_halte' result"""
-    urwid_text_list = [urwid.Text(('lightcyan', f"\"{query}\": {haltes_search_result['aantalHits']} resultaten"))]
+    # todo fetch more than 10 results?
+    nr_of_hits = 10 if haltes_search_result['aantalHits'] > 10 else haltes_search_result['aantalHits']
+    urwid_text_list = [urwid.Text(('lightcyan', f"\"{query}\": {nr_of_hits} resultaten"))]
     text_color = 'green'
 
-    halte_keys = '_'.join(
-        [f"{halte['entiteitnummer']}_{halte['haltenummer']}" for halte in haltes_search_result['haltes']])
+    halte_data_list = list()
+    for halte in haltes_search_result['haltes']:
+        result = delijn_repository.get_lijnen_for_halte(halte['haltenummer'], halte['entiteitnummer'])
+        halte_data_list.append({
+            'haltenummer': halte['haltenummer'],
+            'omschrijving': halte['omschrijving'],
+            'lijnen': result
+        })
 
-    lijnen_bij_haltes = delijn_repository.get_lijnen_for_haltes(halte_keys)
-    for index, halte in enumerate(lijnen_bij_haltes['halteLijnrichtingen']):
-        lijn_nummers = ", ".join([lijn['lijnnummer'] for lijn in halte['lijnrichtingen']])
-        bestemmingen = ", ".join(lijn['bestemming'] for lijn in halte['lijnrichtingen'])
-        halte_omschrijving = ""
-        for _halte in haltes_search_result['haltes']:
-            if _halte['haltenummer'] == halte['halte']['haltenummer']:
-                halte_omschrijving = _halte['omschrijving']
-                break
-
-        text = f"{index + 1}) {halte_omschrijving} - haltenr: "f"{halte['halte']['haltenummer']} - " \
+    for index, halte in enumerate(halte_data_list):
+        lijn_nummers = ", ".join([lijn['lijnnummer'] for lijn in halte['lijnen']['lijnrichtingen']])
+        bestemmingen = ", ".join(lijn['bestemming'] for lijn in halte['lijnen']['lijnrichtingen'])
+        text = f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - " \
                f"Lijnen: {lijn_nummers} Richting: {bestemmingen}"
+
         urwid_text_list.append(urwid.Text((text_color, text)))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
@@ -53,7 +55,7 @@ def get_doorkomsten(halte_nummer: int, entiteitnummmer: int = None) -> tuple[dic
 def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
     """Get formatted string with doorkomsten info"""
     """Fetch text with urwid markup, parsed from get_doorkomsten result"""
-    text_list = [('lightcyan', f"\n{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}")]
+    text_list = [urwid.Text(('lightcyan', f"\n{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}"))]
     text_color = 'green'
     for doorkomst in doorkomsten['doorkomsten']:
         vertrektijd = datetime.fromisoformat(doorkomst['dienstregelingTijdstip'])
@@ -65,27 +67,34 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
         elif 'REALTIME' in doorkomst['predictionStatussen'] and 'real-timeTijdstip' in doorkomst:
             # Sometimes the api doesn't send a 'real-timeTijdstip' even when indicated by prediction status???
             vertrektijd_rt = datetime.fromisoformat(doorkomst['real-timeTijdstip'])
-            realtime_text = (text_color, f"{vertrektijd_rt.strftime('%H:%M'):<7}")
+            # set real_time_delta to zero when it appears to be before 'now'. Happens sometimes...
+            if vertrektijd_rt <= datetime.now():
+                real_time_delta = "0\'"
+            else:
+                real_time_delta = "{0}\'".format(((vertrektijd_rt - datetime.now()) // 60).seconds)
+            realtime_text = (text_color, f"{real_time_delta:<7}")
             if vertrektijd_rt > vertrektijd + timedelta(seconds=60):
                 delay = vertrektijd_rt - vertrektijd
-                delay_text = ('red', f"+{delay.seconds // 60}\'\n")
+                delay_text = ('red', f"+{delay.seconds // 60}\'")
             elif vertrektijd_rt < vertrektijd - timedelta(seconds=60):
                 delay = vertrektijd - vertrektijd_rt
                 # add an extra min to increase chances of catching your bus...
-                delay_text = ('red', f"-{(delay.seconds // 60) + 1}\'\n")
+                delay_text = ('red', f"-{(delay.seconds // 60) + 1}\'")
         else:
             realtime_text = (text_color, f'{"GN RT":<7}')
 
         lijn_info = delijn_repository.get_lijn(doorkomst['lijnnummer'], halte['entiteitnummer'])
         icon = ICON.get(lijn_info['vervoertype'], "")
         line = [
-            (text_color,
-             f"{icon} {lijn_info['vervoertype']:<5}{doorkomst['lijnnummer']:<4}{doorkomst['bestemming']:<20}"),
+            (text_color, f"{icon} {lijn_info['vervoertype']:<5}{doorkomst['lijnnummer']:<4}{doorkomst['bestemming']:<20}"),
             realtime_text,
-            (text_color, f"{vertrektijd_text:<7}"),
-            '\n' if delay_text is None else delay_text]
+            (text_color, f"{vertrektijd_text:<7}")
+        ]
 
-        text_list.append(line)
+        if delay_text:
+            line.append(delay_text)
+
+        text_list.append(urwid.Text(line))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
     return text_list

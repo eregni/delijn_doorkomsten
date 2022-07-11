@@ -57,7 +57,10 @@ def get_lijnen_for_halte(halte_nr: int, eniteit_nr: int) -> dict:
 
 
 def get_lijnen_for_haltes(halte_sleutels: str) -> dict:
-    """geef de lijnrichtingen die de opgegeven halte bedienen op basis van een lijst van halte sleutels"""
+    """
+    geef de lijnrichtingen die de opgegeven halte bedienen op basis van een lijst van halte sleutels.
+    Max 8 sleutels
+    """
     url = f"{DL_CORE}/haltes/lijst/{halte_sleutels}/lijnrichtingen"
     result = _call_api(url)
     return result.json()
