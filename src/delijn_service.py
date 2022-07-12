@@ -4,6 +4,7 @@ import urwid
 import delijn_repository
 from datetime import datetime, timedelta
 from tui import ICON
+from common import get_lines_from_doorkomsten
 
 
 # De lijn search api
@@ -41,13 +42,13 @@ def get_halte_search_results_text(haltes_search_result: dict, query: str) -> lis
 
 
 # De lijn core api
-def get_doorkomsten(halte_nummer: int, entiteitnummmer: int = None) -> tuple[dict, dict]:
+def get_doorkomsten(halte_nummer: str, entiteitnummmer: str = None) -> tuple[dict, dict]:
     """Get doorkomsten data"""
     if not entiteitnummmer:
         # so far, im assuming there are nu duplicate haltenummers
-        entiteitnummmer = delijn_repository.zoek_halte(str(halte_nummer))['haltes'][0]['entiteitnummer']
+        entiteitnummmer = delijn_repository.zoek_halte(halte_nummer)['haltes'][0]['entiteitnummer']
 
-    halte = delijn_repository.geef_halte(halte_nummer, entiteitnummmer)
+    halte = delijn_repository.geef_halte(int(halte_nummer), int(entiteitnummmer))
     doorkomsten = delijn_repository.get_doorkomsten_for_halte(int(halte['haltenummer']), int(halte['entiteitnummer']))
     return halte, doorkomsten
 
@@ -55,8 +56,11 @@ def get_doorkomsten(halte_nummer: int, entiteitnummmer: int = None) -> tuple[dic
 def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
     """Get formatted string with doorkomsten info"""
     """Fetch text with urwid markup, parsed from get_doorkomsten result"""
-    text_list = [urwid.Text(('lightcyan', f"\n{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}"))]
+    text_list = [urwid.Text(('lightcyan', f"{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}"))]
     text_color = 'green'
+    lijnnummers = [item for item in get_lines_from_doorkomsten(doorkomsten)]
+    lijnen_info = [delijn_repository.get_lijn(int(lijn), halte['entiteitnummer']) for lijn in lijnnummers]
+
     for doorkomst in doorkomsten['doorkomsten']:
         vertrektijd = datetime.fromisoformat(doorkomst['dienstregelingTijdstip'])
         vertrektijd_text = vertrektijd.strftime('%H:%M')
@@ -83,18 +87,20 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
         else:
             realtime_text = (text_color, f'{"GN RT":<7}')
 
-        lijn_info = delijn_repository.get_lijn(doorkomst['lijnnummer'], halte['entiteitnummer'])
-        icon = ICON.get(lijn_info['vervoertype'], "")
-        line = [
-            (text_color, f"{icon} {lijn_info['vervoertype']:<5}{doorkomst['lijnnummer']:<4}{doorkomst['bestemming']:<20}"),
+        vervoer_type = next(
+            lijn['vervoertype'] for lijn in lijnen_info if lijn['lijnnummer'] == str(doorkomst['lijnnummer'])
+        )
+        icon = ICON.get(vervoer_type)
+        text_line = [
+            (text_color, f"{icon} {vervoer_type:<5}{doorkomst['lijnnummer']:<4}{doorkomst['bestemming']:<20}"),
             realtime_text,
             (text_color, f"{vertrektijd_text:<7}")
         ]
 
         if delay_text:
-            line.append(delay_text)
+            text_line.append(delay_text)
 
-        text_list.append(urwid.Text(line))
+        text_list.append(urwid.Text(text_line))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
     return text_list

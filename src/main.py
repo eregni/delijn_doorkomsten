@@ -56,6 +56,7 @@ from requests import RequestException
 import delijn_service
 from bookmarks import BOOKMARKS
 from tui import PALETTE
+from common import get_lines_from_doorkomsten
 
 QUERY_LOG = "search.txt"
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
@@ -143,6 +144,7 @@ class Output(urwid.Padding):
         setattr(self.pile, 'focus_position', 0)
 
     def set_doorkomsten_menu(self, doorkomsten: list[urwid.Text]):
+        # todo: update line filters
         if self.program.line_filter:
             caption_text = "Druk 'f' om de filter te verwijderen. 'Enter' om te vernieuwen"
         elif len(get_lines_from_doorkomsten(self.program.last_doorkomsten)) == 1:
@@ -231,7 +233,7 @@ def button_filter_handler(button: urwid.Button, out: Output) -> None:
 
 def button_remove_filter_handler(button: urwid.Button, out: Output) -> None:
     out.program.line_filter = None
-    out.program.process_doorkomsten(out, out.program.last_doorkomsten['haltenummer'])
+    out.program.doorkomsten(out, out.program.last_doorkomsten['haltenummer'])
 
 
 def exit_urwid(*args):
@@ -256,7 +258,7 @@ class Program:
         self.last_search: dict = {}
         self.line_filter: str = ""
 
-    def process_doorkomsten(self, out: Output, halte_nummer: int, entiteitnummmer: int = None) -> None:
+    def doorkomsten(self, out: Output, halte_nummer: str, entiteitnummmer: str = None) -> None:
         """Process doorkomsten"""
         try:
             halte, doorkomsten = delijn_service.get_doorkomsten(halte_nummer, entiteitnummmer)
@@ -307,20 +309,20 @@ class Program:
             halte_nr = int(input_text)
             if halte_nr - 1 in range(len(BOOKMARKS)):
                 bookmark = BOOKMARKS[halte_nr - 1]
-                self.process_doorkomsten(out, bookmark.halte_nummer, bookmark.entiteit)
+                self.doorkomsten(out, bookmark.halte_nummer, bookmark.entiteit)
                 save_query(halte_nr - 1)
             else:
-                self.process_doorkomsten(out, halte_nr)
+                self.doorkomsten(out, str(halte_nr))
 
         else:
             self.search_halte(out, input_text)
 
     def process_userinput_doorkomsten(self, out: Output, user_input: str):
         if user_input == 'enter':
-            self.process_doorkomsten(out, int(self.last_query))
+            self.doorkomsten(out, self.last_query)
         elif user_input == 'f' and self.line_filter:
             self.line_filter = None
-            self.process_doorkomsten(out, int(self.last_query))
+            self.doorkomsten(out, self.last_query)
         elif user_input == 'f':
             lines = get_lines_from_doorkomsten(self.last_doorkomsten)
             if len(lines) < 2:
@@ -333,14 +335,14 @@ class Program:
         if input_text.isdigit() and int(input_text) - 1 in range(len(self.last_search['haltes'])):
             halte_nr = self.last_search['haltes'][int(input_text) - 1]['haltenummer']
             enititeit_nr = self.last_search['haltes'][int(input_text) - 1]['entiteitnummer']
-            self.process_doorkomsten(out, halte_nr, enititeit_nr)
+            self.doorkomsten(out, halte_nr, enititeit_nr)
         else:
             out.set_error_message(f"Ongeldige invoer: \"{input_text}\"")
 
     def process_userinput_filter(self, out: Output, input_text: str):
         if input_text in get_lines_from_doorkomsten(self.last_doorkomsten):
             self.line_filter = input_text
-            self.process_doorkomsten(out, self.last_doorkomsten['haltenummer'])
+            self.doorkomsten(out, self.last_doorkomsten['haltenummer'])
         else:
             out.set_error_message(f"Ongeldige invoer: \"{input_text}\"")
 
@@ -410,14 +412,6 @@ def get_last_query() -> str:
             return file.readline().rstrip()
     except FileNotFoundError:
         return ""
-
-
-def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
-    """Give a list containing the line nrs from the doorkomsten data returned by delijn api"""
-    lines = [line['lijnnummer'] for line in doorkomsten['doorkomsten']]
-    lines = list(dict.fromkeys(lines))
-    lines.sort()
-    return list(map(str, lines))
 
 
 def get_bookmarks() -> list[urwid.Text]:

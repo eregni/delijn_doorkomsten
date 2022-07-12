@@ -5,7 +5,7 @@ docs: https://data.delijn.be/docs/services/
 import datetime
 import requests
 
-API_KEY_PATH = 'api_key'
+API_KEY_PATH = 'api_key.txt'
 DL_CORE = 'https://api.delijn.be/DLKernOpenData/api/v1'
 DL_SEARCH = 'https://api.delijn.be/DLZoekOpenData/v1'
 
