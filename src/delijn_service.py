@@ -1,10 +1,9 @@
 """Functions for interacting with De Lijn api's and make urwid.Text objects"""
-import urwid
+from urwid import Text
 
 import delijn_repository
 from datetime import datetime, timedelta
 from tui import ICON
-from common import get_lines_from_doorkomsten
 
 
 # De lijn search api
@@ -13,29 +12,27 @@ def search_halte(search_term: str) -> dict:
     return delijn_repository.zoek_halte(search_term)
 
 
-def get_halte_search_results_text(haltes_search_result: dict, query: str) -> list[urwid.Text]:
+def get_halte_search_results_text(haltes_search_result: dict, query: str) -> list[Text]:
     """Fetch text with urwid markup, parsed from 'api_search_halte' result"""
-    # todo fetch more than 10 results?
+    # todo fetch more than 10 results? -> create <more> Button
     nr_of_hits = 10 if haltes_search_result['aantalHits'] > 10 else haltes_search_result['aantalHits']
-    urwid_text_list = [urwid.Text(('lightcyan', f"\"{query}\": {nr_of_hits} resultaten"))]
+    haltes = haltes_search_result['haltes']
     text_color = 'green'
 
-    halte_data_list = list()
-    for halte in haltes_search_result['haltes']:
-        result = delijn_repository.get_lijnen_for_halte(halte['haltenummer'], halte['entiteitnummer'])
-        halte_data_list.append({
-            'haltenummer': halte['haltenummer'],
-            'omschrijving': halte['omschrijving'],
-            'lijnen': result
-        })
+    # De lijn API gives results for max 8 haltes at once, so we split out list up in groups
+    halte_sleutels = "_".join([f"{halte['entiteitnummer']}_{halte['haltenummer']}" for halte in haltes])
+    results = delijn_repository.geef_lijnen_voor_haltes(halte_sleutels)
 
-    for index, halte in enumerate(halte_data_list):
-        lijn_nummers = ", ".join([lijn['lijnnummer'] for lijn in halte['lijnen']['lijnrichtingen']])
-        bestemmingen = ", ".join(lijn['bestemming'] for lijn in halte['lijnen']['lijnrichtingen'])
-        text = f"{index + 1}) {halte['omschrijving']} - haltenr: "f"{halte['haltenummer']} - " \
-               f"Lijnen: {lijn_nummers} Richting: {bestemmingen}"
+    urwid_text_list = [Text(('lightcyan', f"\"{query}\": {len(results['halteLijnrichtingen'])} resultaten"))]
+    for index, data in enumerate(results['halteLijnrichtingen']):
+        lijn_nummers = ", ".join([lijn['lijnnummer'] for lijn in data['lijnrichtingen']])
+        bestemmingen = ", ".join(lijn['bestemming'] for lijn in data['lijnrichtingen'])
+        omschrijving = next(halte['omschrijving']
+                            for halte in haltes if halte['haltenummer'] == data['halte']['haltenummer'])
+        text = f"{index + 1}) {omschrijving} - haltenr: "f"{data['halte']['haltenummer']} - Lijnen: {lijn_nummers} " \
+               f"Richting: {bestemmingen}"
+        urwid_text_list.append(Text((text_color, text)))
 
-        urwid_text_list.append(urwid.Text((text_color, text)))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
     return urwid_text_list
@@ -45,21 +42,23 @@ def get_halte_search_results_text(haltes_search_result: dict, query: str) -> lis
 def get_doorkomsten(halte_nummer: str, entiteitnummmer: str = None) -> tuple[dict, dict]:
     """Get doorkomsten data"""
     if not entiteitnummmer:
-        # so far, im assuming there are nu duplicate haltenummers
+        # so far, im assuming there are no duplicate haltenummers
         entiteitnummmer = delijn_repository.zoek_halte(halte_nummer)['haltes'][0]['entiteitnummer']
 
     halte = delijn_repository.geef_halte(int(halte_nummer), int(entiteitnummmer))
-    doorkomsten = delijn_repository.get_doorkomsten_for_halte(int(halte['haltenummer']), int(halte['entiteitnummer']))
+    doorkomsten = delijn_repository.geef_doorkomsten_voor_halte(int(halte['haltenummer']), int(halte['entiteitnummer']))
     return halte, doorkomsten
 
 
-def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
-    """Get formatted string with doorkomsten info"""
+def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[Text]:
+    """Get formatted Text with doorkomsten info"""
     """Fetch text with urwid markup, parsed from get_doorkomsten result"""
-    text_list = [urwid.Text(('lightcyan', f"{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}"))]
+    text_list = [Text(('lightcyan', f"{halte['omschrijving']} - haltenr: {doorkomsten['haltenummer']}"))]
     text_color = 'green'
-    lijnnummers = [item for item in get_lines_from_doorkomsten(doorkomsten)]
-    lijnen_info = [delijn_repository.get_lijn(int(lijn), halte['entiteitnummer']) for lijn in lijnnummers]
+
+    lijn_sleutels = [f"{item['entiteitnummer']}_{item['lijnnummer']}" for item in doorkomsten['doorkomsten']]
+    lijn_sleutels = "_".join(list(dict().fromkeys(lijn_sleutels)))
+    lijnen_data = delijn_repository.geef_lijnen(lijn_sleutels)
 
     for doorkomst in doorkomsten['doorkomsten']:
         vertrektijd = datetime.fromisoformat(doorkomst['dienstregelingTijdstip'])
@@ -88,8 +87,8 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
             realtime_text = (text_color, f'{"GN RT":<7}')
 
         vervoer_type = next(
-            lijn['vervoertype'] for lijn in lijnen_info if lijn['lijnnummer'] == str(doorkomst['lijnnummer'])
-        )
+            lijn['vervoertype'] for lijn in lijnen_data['lijnen']
+            if int(lijn['lijnnummer']) == doorkomst['lijnnummer'])
         icon = ICON.get(vervoer_type)
         text_line = [
             (text_color, f"{icon} {vervoer_type:<5}{doorkomst['lijnnummer']:<4}{doorkomst['bestemming']:<20}"),
@@ -100,7 +99,7 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[urwid.Text]:
         if delay_text:
             text_line.append(delay_text)
 
-        text_list.append(urwid.Text(text_line))
+        text_list.append(Text(text_line))
         text_color = 'yellow' if text_color == 'green' else 'green'
 
     return text_list

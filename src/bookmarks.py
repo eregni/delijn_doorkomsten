@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Halte:
-    bookmark_name: str
+    bookmark_name: str  # printed on screen
     entiteit: int
     halte_nummer: int
 
