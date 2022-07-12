@@ -1,6 +1,7 @@
 #!/bin/bash
 
 if [[ ! -d venv ]]; then
+  echo 'Setting up python venv...'
   python -m venv venv
   source venv/bin/activate
   python -m pip install --upgrade pip

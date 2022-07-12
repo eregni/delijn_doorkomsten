@@ -5,17 +5,16 @@ docs: https://data.delijn.be/docs/services/
 import datetime
 import requests
 
-
+API_KEY_PATH = 'api_key'
 DL_CORE = 'https://api.delijn.be/DLKernOpenData/api/v1'
 DL_SEARCH = 'https://api.delijn.be/DLZoekOpenData/v1'
 
-
 try:
-    with open('api_key.txt', 'r') as f:
+    with open(API_KEY_PATH, 'r') as f:
         key = f.readline()
         API_KEY = {'Ocp-Apim-Subscription-Key': key}
 except FileNotFoundError:
-    print('You need a file with you api key from https://data.delijn.be/signin')
+    print(f"You need a file \'{API_KEY_PATH}\' with you api key from https://data.delijn.be/signin")
     raise SystemExit
 
 
