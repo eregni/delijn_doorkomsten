@@ -51,7 +51,8 @@ from enum import Enum
 from signal import signal, SIGINT, SIGHUP
 from typing import Optional
 
-from requests import RequestException
+import requests.exceptions
+from requests import RequestException, ConnectionError
 from urwid import Padding, Divider, Edit, Text, Button, Columns, Pile, Filler, LineBox, MainLoop, ExitMainLoop
 
 import delijn_service
@@ -272,33 +273,30 @@ class Program:
             out.set_doorkomsten_menu(doorkomsten_output)
             return 0
 
-        # todo exceptions text...
         except RequestException as ex:
-            out.set_error_message(f"{ex}", clear=True)
+            fetch_api_exception(out, ex)
             return 1
 
     def search_halte(self, out: Output, query: str) -> None:
         """Process halte search"""
         try:
             data = delijn_service.search_halte(query)
-        except RequestException as ex:
-            out.set_error_message(f"{ex}", clear=True)
-            return
 
-        if data['aantalHits'] == 0:
-            out.set_error_message("Niets gevonden. Probeer een andere zoekterm", clear=True)
-        else:
-            try:
-                search_output = delijn_service.get_halte_search_results_text(data, query)
-            except RequestException as ex:
-                out.set_error_message(f"{ex}", clear=True)
+            if data['aantalHits'] == 0:
+                out.set_error_message("Niets gevonden. Probeer een andere zoekterm", clear=True)
                 return
+            else:
+                search_output = delijn_service.get_halte_search_results_text(data, query)
 
-            out.set_search_halte_menu(search_output)
-            save_query(query)
-            self.last_query = str(query)
-            self.state = States.SEARCH_HALTE_MENU
-            self.last_search = data
+                out.set_search_halte_menu(search_output)
+                save_query(query)
+                self.last_query = str(query)
+                self.state = States.SEARCH_HALTE_MENU
+                self.last_search = data
+
+        except RequestException as ex:
+            fetch_api_exception(out, ex)
+            return
 
     def process_userinput_main(self, out: Output, input_text: str):
         if input_text == '' and self.last_query:
@@ -436,6 +434,18 @@ def get_lines_from_doorkomsten(doorkomsten: dict) -> list[str]:
     lines = list(dict.fromkeys(lines))
     lines.sort()
     return list(map(str, lines))
+
+
+def fetch_api_exception(out: Output, ex: RequestException):
+    """Handler for exceptions raised by requests"""
+    if isinstance(ex, ConnectionError):
+        out.set_error_message("Cannot reach delijn api. Is there an internet connection?", clear=True)
+    # last 'catch-all'
+    elif isinstance(ex, RequestException):
+        out.set_error_message(f"{ex}", clear=True)
+    else:
+        # raise unhandled exception
+        raise ex
 
 
 class States(Enum):
