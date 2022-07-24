@@ -40,24 +40,21 @@ Script flow:
             User_info: possible line nrs to filter
             User input: line nr to filter -> Doorkomsten menu with filtered doorkomsten
 
-# TODO: parse info about delays/disruptions/detours
-# TODO: unicode waiting animation (urwid overlay + progressbar?)
 # TODO: Use buttons in the output box
 """
 # Postpone evaluation for type annonations https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-from enum import Enum
 from signal import signal, SIGINT, SIGHUP
 from typing import Optional
 
-import requests.exceptions
 from requests import RequestException, ConnectionError
 from urwid import Padding, Divider, Edit, Text, Button, Columns, Pile, Filler, LineBox, MainLoop, ExitMainLoop
 
 import delijn_service
 from bookmarks import BOOKMARKS
-from tui import PALETTE
+from models.enums import States
+from models.tui import PALETTE
 
 QUERY_LOG = "search.txt"
 PROGRAM_TITLE = "\U0001F68B \U0001F68C \U0001F68B De lijn doorkomsten \U0001F68C \U0001F68B \U0001F68C"
@@ -71,7 +68,7 @@ class Output(Padding):
     """
 
     def __init__(self, program: Program):
-        self.program = program
+        self.program: Program = program
 
         self.div = Divider(div_char='-')
 
@@ -115,6 +112,7 @@ class Output(Padding):
         setattr(self.buttons, 'box_buttons', buttons)
 
     def set_main_menu(self):
+        self.program.set_up_main()
         self.input_user.original_widget.set_caption(('bold', "Geef haltenummer of zoekterm: "))
         self.input_user.original_widget.set_edit_text("")
         self.set_output_box_items(get_bookmarks())
@@ -202,7 +200,7 @@ class Output(Padding):
 
 
 def doorkomsten_alarm_handler(_loop: MainLoop, out: Output):
-    if output.program.state == States.DOORKOMSTEN_MENU:
+    if output.program.state is States.DOORKOMSTEN_MENU:
         output.input_user.keypress((), 'enter')
     _loop.set_alarm_in(DOORKOMSTEN_REFRESH, doorkomsten_alarm_handler, user_data=out)
 
@@ -212,9 +210,6 @@ def button_bookmarks_handler(button: Button, out: Output) -> None:
 
 
 def button_main_menu_handler(button: Button, out: Output) -> None:
-    out.program.state = States.MAIN
-    out.program.last_search.clear()
-    out.program.last_doorkomsten.clear()
     out.set_main_menu()
 
 
@@ -245,7 +240,6 @@ def signal_handler(*args) -> None:
 
 class Program:
     def __init__(self):
-        # todo: encapsulate properties who should be private (states are set all over the program :(
         self.state: States = States.MAIN
         self.last_query: str = get_last_query()
         self.last_doorkomsten: dict = {}
@@ -255,7 +249,7 @@ class Program:
     def doorkomsten(self, out: Output, halte_nummer: str, entiteitnummmer: str = None) -> int:
         """
         Process doorkomsten
-        Returns 0 on success. 1 on failure
+        :return 0 on success. 1 on failure
         """
         try:
             halte, doorkomsten = delijn_service.get_doorkomsten(halte_nummer, entiteitnummmer)
@@ -271,52 +265,67 @@ class Program:
 
             doorkomsten_output = delijn_service.get_doorkomsten_text(halte, self.last_doorkomsten)
             out.set_doorkomsten_menu(doorkomsten_output)
+            self.last_query = halte_nummer
             return 0
 
         except RequestException as ex:
             fetch_api_exception(out, ex)
             return 1
 
-    def search_halte(self, out: Output, query: str) -> None:
-        """Process halte search"""
+    def search_halte(self, out: Output, query: str) -> int:
+        """
+        Process halte search
+        :return 0 on success. 1 on failure
+        """
         try:
             data = delijn_service.search_halte(query)
 
             if data['aantalHits'] == 0:
                 out.set_error_message("Niets gevonden. Probeer een andere zoekterm", clear=True)
-                return
+                return 1
             else:
                 search_output = delijn_service.get_halte_search_results_text(data, query)
 
                 out.set_search_halte_menu(search_output)
                 save_query(query)
                 self.last_query = str(query)
-                self.state = States.SEARCH_HALTE_MENU
                 self.last_search = data
+                return 0
 
         except RequestException as ex:
             fetch_api_exception(out, ex)
-            return
+            return 1
 
-    def process_userinput_main(self, out: Output, input_text: str):
+    def set_up_main(self) -> None:
+        """Do the necessary stuff for the main screen"""
+        self.state = States.MAIN
+        self.last_search.clear()
+        self.last_doorkomsten.clear()
+
+    def process_userinput_main(self, out: Output, input_text: str) -> None:
+        """User pressed a key in the main screen"""
         if input_text == '' and self.last_query:
             input_text = self.last_query
 
         if input_text.isdigit():
-            input_int = int(input_text)
-            if input_int - 1 in range(len(BOOKMARKS)):
-                bookmark = BOOKMARKS[input_int - 1]
-                if self.doorkomsten(out, bookmark.halte_nummer, bookmark.entiteit) == 0:
-                    save_query(BOOKMARKS[input_int - 1].halte_nummer)
-                    self.last_query = input_text
-                self.state = States.DOORKOMSTEN_MENU
+            if int(input_text) - 1 in range(len(BOOKMARKS)):
+                bookmark = BOOKMARKS[int(input_text) - 1]
+                input_text = bookmark.halte_nummer
+                result = self.doorkomsten(out, bookmark.halte_nummer, bookmark.entiteit)
             else:
-                self.doorkomsten(out, str(input_int))
+                result = self.doorkomsten(out, input_text)
+
+            if result == 0:
+                save_query(input_text)
+                self.state = States.DOORKOMSTEN_MENU
 
         else:
-            self.search_halte(out, input_text)
+            result = self.search_halte(out, input_text)
+            if result == 0:
+                self.state = States.SEARCH_HALTE_MENU
 
-    def process_userinput_doorkomsten(self, out: Output, user_input: str):
+    def process_userinput_doorkomsten(self, out: Output, user_input: str) -> None:
+        """User pressed a key in the doorkomsten screen"""
         if user_input == 'enter':
             self.doorkomsten(out, self.last_query)
         elif user_input == 'f' and self.line_filter:
@@ -330,18 +339,23 @@ class Program:
             out.set_choose_line_filter_menu(lines)
             self.state = States.FILTER_MENU
 
-    def process_userinput_search_halte(self, out: Output, input_text: str):
+    def process_userinput_search_halte(self, out: Output, input_text: str) -> None:
+        """User pressed a key in the search-halte screen"""
         if input_text.isdigit() and int(input_text) - 1 in range(len(self.last_search['haltes'])):
             halte_nr = self.last_search['haltes'][int(input_text) - 1]['haltenummer']
             enititeit_nr = self.last_search['haltes'][int(input_text) - 1]['entiteitnummer']
-            self.doorkomsten(out, halte_nr, enititeit_nr)
+            result = self.doorkomsten(out, halte_nr, enititeit_nr)
+            if result == 0:
+                self.state = States.DOORKOMSTEN_MENU
         else:
             out.set_error_message(f"Ongeldige invoer: \"{input_text}\"")
 
-    def process_userinput_filter(self, out: Output, input_text: str):
+    def process_userinput_filter(self, out: Output, input_text: str) -> None:
+        """User pressed a key in the filter menu screen"""
         if input_text in get_lines_from_doorkomsten(self.last_doorkomsten):
             self.line_filter = input_text
             self.doorkomsten(out, self.last_doorkomsten['haltenummer'])
+            self.state = States.DOORKOMSTEN_MENU
         else:
             out.set_error_message(f"Ongeldige invoer: \"{input_text}\"")
 
@@ -357,13 +371,13 @@ class UserInput(Padding):
     def keypress(self, size: tuple, key: str) -> Optional[str]:
         """Select handler for keypress"""
         state = self.program.state
-        if state == States.MAIN:
+        if state is States.MAIN:
             return self._process_main(size, key)
-        if state == States.DOORKOMSTEN_MENU:
+        if state is States.DOORKOMSTEN_MENU:
             return self._process_doorkomsten(size, key)
-        if state == States.SEARCH_HALTE_MENU:
+        if state is States.SEARCH_HALTE_MENU:
             return self._process_search_halte(size, key)
-        if state == States.FILTER_MENU:
+        if state is States.FILTER_MENU:
             return self._process_filter(size, key)
 
     def _process_main(self, size: tuple, key: str) -> Optional[str]:
@@ -378,9 +392,8 @@ class UserInput(Padding):
         """Handler for keypress in doorkomsten menu. (keypress here instead of submit)"""
         if key in ['f', 'enter']:
             self.program.process_userinput_doorkomsten(self.output, key)
-            return super().original_widget.set_edit_text("")
 
-        return super().keypress(size, key)
+        return super().original_widget.set_edit_text("")
 
     def _process_search_halte(self, size: tuple, key: str):
         """Handler for submit in search halte menu."""
@@ -446,13 +459,6 @@ def fetch_api_exception(out: Output, ex: RequestException):
     else:
         # raise unhandled exception
         raise ex
-
-
-class States(Enum):
-    MAIN = 0
-    DOORKOMSTEN_MENU = 1
-    SEARCH_HALTE_MENU = 2
-    FILTER_MENU = 3
 
 
 signal(SIGINT, signal_handler)

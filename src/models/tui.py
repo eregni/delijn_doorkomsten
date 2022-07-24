@@ -1,4 +1,9 @@
-# tui stuff
+"""tui stuff"""
+
+WAITING_ANIMATION = [
+    '\U0001258E'
+]
+
 ICON = {
     'BUS': '\U0001F68C',
     'TRAM': '\U0001F68B',
