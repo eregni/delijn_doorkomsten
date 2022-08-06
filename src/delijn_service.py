@@ -70,7 +70,7 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[Text]:
         vertrektijd_text = vertrektijd.strftime('%H:%M')
         delay_text = None
 
-        if 'CANCELLED' in doorkomst['predictionStatussen'] or 'DELETED' in doorkomst['predictionStatussen']:
+        if 'CANCELLED' in doorkomst['predictionStatussen'] or 'DELETED' in doorkomst['predictionStatussen'] or 'GESCHRAPT' in doorkomst['predictionStatussen']:
             realtime_text = ('red', f'{"Rijdt niet":<7}')
         elif 'REALTIME' in doorkomst['predictionStatussen'] and 'real-timeTijdstip' in doorkomst:
             # Sometimes the api doesn't send a 'real-timeTijdstip' even when indicated by prediction status???

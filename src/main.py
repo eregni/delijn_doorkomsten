@@ -42,7 +42,7 @@ Script flow:
 
 # TODO: Use buttons in the output box
 """
-# Postpone evaluation for type annonations https://www.python.org/dev/peps/pep-0563/
+# Postpone evaluation for type annotations https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
 from signal import signal, SIGINT, SIGHUP
