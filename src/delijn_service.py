@@ -61,9 +61,10 @@ def get_doorkomsten_text(halte: dict, doorkomsten: dict) -> list[Text]:
     lijnen_data = delijn_repository.geef_lijnen(lijn_sleutels)
 
     for doorkomst in doorkomsten['doorkomsten']:
-        # It happened there is a 'doorkomst' without any time/real-time info. In that case the info is useless
-        # so we drop it..
-        if 'dienstregelingTijdstip' not in doorkomst and 'GEENREALTIME' in doorkomst['predictionStatussen']:
+        # Sometimes there is a 'doorkomst' without any time/real-time info (even when 'predictionStatussen' contains
+        # 'REALTIME'). In that case the info is useless, so we drop it.
+        # This issue is already reported at the api portal from De Lijn...
+        if 'dienstregelingTijdstip' not in doorkomst:
             continue
 
         vertrektijd = datetime.fromisoformat(doorkomst['dienstregelingTijdstip'])
